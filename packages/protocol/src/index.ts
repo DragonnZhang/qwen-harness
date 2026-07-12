@@ -16,3 +16,4 @@ export * from './events.ts';
 export * from './errors.ts';
 export * from './commands.ts';
 export * from './clock.ts';
+export * from './sanitize.ts';
