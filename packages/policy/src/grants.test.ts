@@ -132,10 +132,12 @@ describe('grant lifetime', () => {
     const grants = [
       grant({ id: 'g1', scope: 'session', actionDigest: digest, expiresAt: NOW + 1000 }),
     ];
-    expect(engine.evaluate(action, ctx({ profile: 'ask', grants, now: NOW })).outcome).toBe('allow');
-    expect(
-      engine.evaluate(action, ctx({ profile: 'ask', grants, now: NOW + 1000 })).outcome,
-    ).toBe('ask');
+    expect(engine.evaluate(action, ctx({ profile: 'ask', grants, now: NOW })).outcome).toBe(
+      'allow',
+    );
+    expect(engine.evaluate(action, ctx({ profile: 'ask', grants, now: NOW + 1000 })).outcome).toBe(
+      'ask',
+    );
     expect(isGrantLive(grants[0]!, NOW + 5000)).toBe('expired');
   });
 
@@ -145,7 +147,10 @@ describe('grant lifetime', () => {
       'g1',
       NOW,
     );
-    const decision = engine.evaluate(action, ctx({ profile: 'ask', grants: [...grants], now: NOW + 1 }));
+    const decision = engine.evaluate(
+      action,
+      ctx({ profile: 'ask', grants: [...grants], now: NOW + 1 }),
+    );
     expect(decision.outcome).toBe('ask');
     expect(decision.trace.some((s) => s.note.includes('revoked'))).toBe(true);
   });

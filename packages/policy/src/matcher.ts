@@ -11,7 +11,7 @@
 
 import type { ActionKind, NormalizedAction } from './action.ts';
 import { actionDigest, actionPaths } from './action.ts';
-import { expandHome, matchGlob } from './paths.ts';
+import { expandHome, matchGlob, matchTextGlob } from './paths.ts';
 
 export interface ActionMatcher {
   readonly kinds?: readonly ActionKind[];
@@ -29,8 +29,12 @@ export interface ActionMatcher {
   readonly digest?: string;
 }
 
-function anyGlob(patterns: readonly string[], values: readonly string[]): boolean {
+function anyPathGlob(patterns: readonly string[], values: readonly string[]): boolean {
   return patterns.some((pattern) => values.some((value) => matchGlob(pattern, value)));
+}
+
+function anyTextGlob(patterns: readonly string[], values: readonly string[]): boolean {
+  return patterns.some((pattern) => values.some((value) => matchTextGlob(pattern, value)));
 }
 
 /**
@@ -69,35 +73,35 @@ export function matchesAction(
   if (matcher.paths !== undefined) {
     const paths = actionPaths(action);
     const patterns = matcher.paths.map((p) => expandHome(p, ctx.homeDir));
-    if (paths.length === 0 || !anyGlob(patterns, paths)) return false;
+    if (paths.length === 0 || !anyPathGlob(patterns, paths)) return false;
   }
 
   if (matcher.commands !== undefined) {
     const argv0 =
       action.kind === 'shell'
         ? action.argv[0]
-        : action.kind === 'git-write'
+        : action.kind === 'git-write' || action.kind === 'git-read'
           ? 'git'
-          : action.kind === 'git-read'
-            ? 'git'
-            : undefined;
-    if (argv0 === undefined || !anyGlob(matcher.commands, [argv0])) return false;
+          : undefined;
+    if (argv0 === undefined || !anyTextGlob(matcher.commands, [argv0])) return false;
   }
 
   if (matcher.commandLines !== undefined) {
-    if (action.kind !== 'shell' || !anyGlob(matcher.commandLines, [action.command])) return false;
+    if (action.kind !== 'shell' || !anyTextGlob(matcher.commandLines, [action.command])) {
+      return false;
+    }
   }
 
   if (matcher.hosts !== undefined) {
-    if (action.kind !== 'network' || !anyGlob(matcher.hosts, [action.host])) return false;
+    if (action.kind !== 'network' || !anyTextGlob(matcher.hosts, [action.host])) return false;
   }
 
   if (matcher.mcpServers !== undefined) {
-    if (action.kind !== 'mcp' || !anyGlob(matcher.mcpServers, [action.server])) return false;
+    if (action.kind !== 'mcp' || !anyTextGlob(matcher.mcpServers, [action.server])) return false;
   }
 
   if (matcher.mcpTools !== undefined) {
-    if (action.kind !== 'mcp' || !anyGlob(matcher.mcpTools, [action.tool])) return false;
+    if (action.kind !== 'mcp' || !anyTextGlob(matcher.mcpTools, [action.tool])) return false;
   }
 
   return true;

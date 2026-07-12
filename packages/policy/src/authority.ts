@@ -155,7 +155,10 @@ export function authorityViolations(
   const parentAllowIds = new Set(parent.rules.filter((r) => r.effect === 'allow').map((r) => r.id));
   for (const rule of child.rules) {
     if (rule.effect === 'allow' && !parentAllowIds.has(rule.id)) {
-      violations.push({ field: 'rules', detail: `allow-rule ${rule.id} is not held by the parent` });
+      violations.push({
+        field: 'rules',
+        detail: `allow-rule ${rule.id} is not held by the parent`,
+      });
     }
   }
   const parentGrantIds = new Set(parent.grants.map((g) => g.id));

@@ -17,8 +17,7 @@
   },
   "dependencies": {
     "@qwen-harness/protocol": "workspace:*",
-    "@qwen-harness/policy": "workspace:*",
-    "@qwen-harness/config": "workspace:*"
+    "@qwen-harness/policy": "workspace:*"
   },
   "devDependencies": {
     "@qwen-harness/testkit": "workspace:*"

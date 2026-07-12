@@ -146,7 +146,7 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
   // Layer 2
   'secret-store': ['protocol', 'config'],
   'provider-dashscope': ['protocol', 'provider-core', 'secret-store'],
-  'sandbox-linux': ['protocol', 'policy', 'config'],
+  'sandbox-linux': ['protocol', 'policy'],
   network: ['protocol', 'policy', 'config'],
   'tool-worker': ['protocol', 'tools-core', 'policy', 'sandbox-linux'],
   'tools-builtin': ['protocol', 'tools-core', 'policy', 'tool-worker'],

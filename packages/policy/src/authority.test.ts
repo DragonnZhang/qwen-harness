@@ -58,11 +58,7 @@ describe('intersect', () => {
   };
 
   it('a child cannot escalate its profile', () => {
-    const child = intersect(
-      { ...parent, profile: 'yolo' },
-      parent,
-      NO_MANAGED_RESTRICTIONS,
-    );
+    const child = intersect({ ...parent, profile: 'yolo' }, parent, NO_MANAGED_RESTRICTIONS);
     expect(child.profile).toBe('auto-accept-edits');
     expect(isAtMost(child, parent)).toBe(true);
   });
@@ -73,11 +69,7 @@ describe('intersect', () => {
   });
 
   it('a child cannot obtain network the parent does not have', () => {
-    const child = intersect(
-      { ...parent, networkAllowed: true },
-      parent,
-      NO_MANAGED_RESTRICTIONS,
-    );
+    const child = intersect({ ...parent, networkAllowed: true }, parent, NO_MANAGED_RESTRICTIONS);
     expect(child.networkAllowed).toBe(false);
   });
 

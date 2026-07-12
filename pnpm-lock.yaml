@@ -418,9 +418,6 @@ importers:
 
   packages/sandbox-linux:
     dependencies:
-      '@qwen-harness/config':
-        specifier: workspace:*
-        version: link:../config
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../policy

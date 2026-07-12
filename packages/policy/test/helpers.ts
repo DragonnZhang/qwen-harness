@@ -59,7 +59,11 @@ export function ctx(overrides: ContextOverrides = {}): PolicyContext {
 
 export const fileRead = (path: string): NormalizedAction => ({ kind: 'file-read', path });
 
-export const fileWrite = (path: string, content = 'hello', executable = false): NormalizedAction => ({
+export const fileWrite = (
+  path: string,
+  content = 'hello',
+  executable = false,
+): NormalizedAction => ({
   kind: 'file-write',
   path,
   createsExecutable: executable,

@@ -49,3 +49,23 @@ Rejected alternatives:
    §"yolo").
 5. Sandbox escape attempts (path, symlink, process, network, resource) are a required security
    suite, not a claim. String matching alone can never satisfy `SB-04`.
+
+## Addendum (checkpoint 02): merged-/usr and uutils coreutils
+
+Implementing the backend surfaced a host-specific detail that the checkpoint-00 probe missed
+because it used `--unshare-all` with a full `/` bind.
+
+The target host (Ubuntu 26.10) has:
+- **merged `/usr`**: `/bin`, `/sbin`, `/lib`, `/lib64` are symlinks into `/usr`;
+- **uutils coreutils** (the Rust rewrite): `/usr/bin/true` is itself a symlink to
+  `../lib/cargo/bin/coreutils/true`, a dynamically-linked binary that needs the loader under
+  `/lib64`.
+
+Consequence for `buildBwrapArgs`: binding only the real directories is not enough. The sandbox
+must **recreate the merged-/usr symlinks inside the namespace** (`--symlink usr/bin /bin`, and the
+same for `/sbin`, `/lib`, `/lib64`), or `/bin/sh`, the dynamic loader, and every coreutils binary
+fail to resolve. The capability smoke test must do the same, or it misreports a working sandbox as
+a namespace failure.
+
+This is exactly the kind of platform assumption `task.md` forbids claiming untested: the fix is
+verified by 13 real-execution security tests, not asserted.

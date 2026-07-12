@@ -89,15 +89,12 @@ export function mergeRules(
       winner = match;
       continue;
     }
-    const current = RESTRICTIVENESS[winner.effect as Exclude<RuleEffect, 'passthrough'>];
+    const current = RESTRICTIVENESS[winner.effect];
     const candidate = RESTRICTIVENESS[match.effect];
     if (candidate > current) winner = match;
   }
 
-  const effect =
-    winner === null || winner.effect === 'passthrough'
-      ? null
-      : (winner.effect as Exclude<RuleEffect, 'passthrough'>);
+  const effect = winner === null || winner.effect === 'passthrough' ? null : winner.effect;
 
   return { effect, winner: effect === null ? null : winner, matches };
 }

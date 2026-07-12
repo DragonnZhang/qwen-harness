@@ -39,6 +39,12 @@ export default defineConfig({
           name: 'security',
           include: ['packages/*/test/security/**/*.test.ts', 'apps/*/test/security/**/*.test.ts'],
           testTimeout: 60_000,
+          // Security tests spawn REAL sandboxed processes and inspect the REAL process table for
+          // orphans. Running files in parallel on a small host makes those checks race each other
+          // (one file's children look like another file's orphans, and wall-clock teardown
+          // assertions miss under CPU contention). One file at a time keeps them deterministic —
+          // the flake policy forbids retry-to-pass, so we remove the contention instead.
+          fileParallelism: false,
         },
       },
       {
@@ -47,6 +53,7 @@ export default defineConfig({
           name: 'pty',
           include: ['apps/*/test/pty/**/*.test.ts', 'packages/*/test/pty/**/*.test.ts'],
           testTimeout: 120_000,
+          fileParallelism: false,
         },
       },
       {

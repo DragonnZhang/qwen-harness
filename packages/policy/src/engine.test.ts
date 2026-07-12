@@ -357,7 +357,10 @@ describe('auto-accept-edits', () => {
       match: { kinds: ['file-write'], paths: [`${WORKSPACE}/**`] },
       reason: 'user allowed all workspace writes',
     };
-    const decision = engine.evaluate(fileWrite(`${WORKSPACE}/.env`), ctx({ profile, rules: [rule] }));
+    const decision = engine.evaluate(
+      fileWrite(`${WORKSPACE}/.env`),
+      ctx({ profile, rules: [rule] }),
+    );
     expect(decision.outcome).toBe('ask');
     expect(decision.trace.some((s) => s.stage === 'rule' && s.effect === 'no-opinion')).toBe(true);
   });
@@ -577,9 +580,9 @@ describe('rules merge deny-first across scopes', () => {
   it('a deny-rule beats a matching exact grant', () => {
     const action = shell('rm -rf build');
     const g = grant({ id: 'g-rm', scope: 'session', actionDigest: actionDigest(action) });
-    expect(engine.evaluate(action, ctx({ profile: 'ask', rules: [denyRule], grants: [g] })).outcome).toBe(
-      'deny',
-    );
+    expect(
+      engine.evaluate(action, ctx({ profile: 'ask', rules: [denyRule], grants: [g] })).outcome,
+    ).toBe('deny');
   });
 });
 

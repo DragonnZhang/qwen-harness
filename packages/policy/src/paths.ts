@@ -267,10 +267,22 @@ function escapeLiteral(char: string): string {
 }
 
 /**
- * `**` crosses path separators, `*` and `?` do not. Deliberately small: a full glob dialect would
- * be a second parser to get wrong, and every pattern in this file is one of three shapes.
+ * Two flavors, because a path and a command line are not the same kind of string.
+ *
+ * PATH flavor: `**` crosses `/`, `*` and `?` do not. A trailing `/**` also matches the directory
+ * itself, so `/etc/**` covers `/etc` — anything else invites a rule that protects every file in a
+ * directory but not the directory.
+ *
+ * TEXT flavor (commands, hosts, MCP names): `*` crosses everything. `rm *` MUST match `rm -rf /`.
+ * Getting this wrong is not a cosmetic bug: a deny-rule that silently fails to match is a deny
+ * that never happens.
+ *
+ * Deliberately small. A full glob dialect would be a second parser to get wrong.
  */
-export function globToRegExp(pattern: string): RegExp {
+export function globToRegExp(pattern: string, flavor: 'path' | 'text' = 'path'): RegExp {
+  const star = flavor === 'path' ? '[^/]*' : '.*';
+  const question = flavor === 'path' ? '[^/]' : '.';
+
   let source = '^';
   let i = 0;
   while (i < pattern.length) {
@@ -279,20 +291,26 @@ export function globToRegExp(pattern: string): RegExp {
       if (pattern[i + 1] === '*') {
         if (pattern[i + 2] === '/') {
           // `**/` — zero or more leading directories.
-          source += '(?:[^/]*/)*';
+          source += flavor === 'path' ? '(?:[^/]*/)*' : '.*';
           i += 3;
+          continue;
+        }
+        // A trailing `/**` matched the directory itself; the `/` is already in `source`.
+        if (flavor === 'path' && i + 2 === pattern.length && source.endsWith('/')) {
+          source = `${source.slice(0, -1)}(?:/.*)?`;
+          i += 2;
           continue;
         }
         source += '.*';
         i += 2;
         continue;
       }
-      source += '[^/]*';
+      source += star;
       i += 1;
       continue;
     }
     if (char === '?') {
-      source += '[^/]';
+      source += question;
       i += 1;
       continue;
     }
@@ -304,13 +322,24 @@ export function globToRegExp(pattern: string): RegExp {
 
 const globCache = new Map<string, RegExp>();
 
-export function matchGlob(pattern: string, value: string): boolean {
-  let regexp = globCache.get(pattern);
+function cachedGlob(pattern: string, flavor: 'path' | 'text'): RegExp {
+  const key = `${flavor} ${pattern}`;
+  let regexp = globCache.get(key);
   if (regexp === undefined) {
-    regexp = globToRegExp(pattern);
-    globCache.set(pattern, regexp);
+    regexp = globToRegExp(pattern, flavor);
+    globCache.set(key, regexp);
   }
-  return regexp.test(value);
+  return regexp;
+}
+
+/** Match a canonical absolute PATH. */
+export function matchGlob(pattern: string, value: string): boolean {
+  return cachedGlob(pattern, 'path').test(value);
+}
+
+/** Match a command line, argv[0], network host, or MCP name. `*` crosses `/`. */
+export function matchTextGlob(pattern: string, value: string): boolean {
+  return cachedGlob(pattern, 'text').test(value);
 }
 
 /** Expand a leading `~` against an explicitly supplied home directory. No environment is read. */

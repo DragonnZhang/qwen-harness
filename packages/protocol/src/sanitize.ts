@@ -46,7 +46,7 @@ const ANSI_SEQUENCE = new RegExp(
 );
 
 /** C0 controls except \t (09) and \n (0A); DEL (7F); C1 controls (80-9F). */
-// eslint-disable-next-line no-control-regex
+
 const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 
 /** A lone CR rewinds the cursor to column 0 and can overwrite text the user already read. */

@@ -41,11 +41,7 @@ export interface Grant {
 }
 
 export type GrantRejection =
-  | 'expired'
-  | 'revoked'
-  | 'already-used'
-  | 'no-match'
-  | 'scope-not-allowed-here';
+  'expired' | 'revoked' | 'already-used' | 'no-match' | 'scope-not-allowed-here';
 
 export interface GrantLookup {
   readonly grant: Grant | null;

@@ -11,15 +11,20 @@ function assertInert(text: string) {
   expect(text, 'ESC survived').not.toContain(ESC);
   expect(text, 'BEL survived').not.toContain(BEL);
   // No C0 control other than \n and \t, no DEL, no C1.
-  // eslint-disable-next-line no-control-regex
-  expect(text, 'a control character survived').not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/);
+
+  expect(text, 'a control character survived').not.toMatch(
+    /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/,
+  );
 }
 
 describe('terminal control sequences are neutralized (TL-11)', () => {
   const attacks: [name: string, payload: string][] = [
     ['OSC 52 clipboard write (silent exfiltration)', `${ESC}]52;c;aGVsbG8gd29ybGQ=${BEL}`],
     ['OSC 0 terminal title rewrite', `${ESC}]0;pwned${BEL}`],
-    ['OSC 8 hyperlink whose text lies about its target', `${ESC}]8;;http://evil.example${BEL}click me${ESC}]8;;${BEL}`],
+    [
+      'OSC 8 hyperlink whose text lies about its target',
+      `${ESC}]8;;http://evil.example${BEL}click me${ESC}]8;;${BEL}`,
+    ],
     ['CSI screen clear + cursor home (repaint the screen)', `${ESC}[2J${ESC}[H`],
     ['CSI cursor move (overwrite the trusted status line)', `${ESC}[1;1H${ESC}[K`],
     ['SGR colour codes used to imitate trusted chrome', `${ESC}[42m${ESC}[30m APPROVED ${ESC}[0m`],
