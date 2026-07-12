@@ -1,0 +1,40 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Runtime state and traces
+.qwen-harness/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+!fixtures/**/*.jsonl
+!packages/**/__tests__/fixtures/**/*.jsonl
+!docs/execution/checkpoints/**/*.jsonl
+
+# Test and temporary output
+tmp/
+temp/
+.cache/
+test-results/
+playwright-report/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
