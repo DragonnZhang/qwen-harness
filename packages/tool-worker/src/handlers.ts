@@ -366,7 +366,7 @@ function runShell(
     const child = spawn(command, [...argv], {
       cwd,
       // A minimal environment. The sandbox already strips the parent env, but the worker never
-      // relies on a single control: DASHSCOPE_API_KEY is not in this allowlist, so even a
+      // relies on a single control: the provider credential is not in this allowlist, so even a
       // misconfigured sandbox cannot hand the model's key to a shell command.
       env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', HOME: cwd, LANG: 'C.UTF-8' },
       // `detached` puts the child in its OWN PROCESS GROUP. That is what lets us kill the whole

@@ -18,7 +18,8 @@
   "dependencies": {
     "@qwen-harness/protocol": "workspace:*",
     "@qwen-harness/provider-core": "workspace:*",
-    "@qwen-harness/secret-store": "workspace:*"
+    "@qwen-harness/secret-store": "workspace:*",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@qwen-harness/testkit": "workspace:*"

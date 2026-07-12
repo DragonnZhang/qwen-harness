@@ -66,20 +66,44 @@ Done so far:
   Registry holds DEFINITIONS only, never handlers — which is *why* a main-process `fs` call cannot
   implement a model tool. Batching is derived from actual argument footprints, not tool names.
 
-Remaining for 02:
+- `packages/tool-worker` — capability-scoped RPC + the sandboxed handlers. The ONLY place
+  model-initiated file/shell/Git I/O executes. 11 path-escape security tests against a REAL
+  filesystem (symlink escape, symlinked parent dir, hardlink, traversal, absolute smuggling,
+  TOCTOU device+inode recheck). Shell uses `spawn` + process group so the whole tree dies; git runs
+  with `-c core.hooksPath=/dev/null` so a malicious repo's hooks cannot execute.
+- `packages/policy` — deny-by-default engine (pure). Landed; 4 tests still red at last run.
+- `packages/provider-core` + `packages/provider-dashscope` — Responses + Chat transports, error
+  classification, retry with full jitter. Landed and building.
 
-1. `packages/policy` + `packages/sandbox-linux` — delegated, in flight.
-2. `packages/provider-core` + `packages/provider-dashscope` — delegated, in flight.
-3. `packages/tool-worker` — capability-scoped RPC; the ONLY place model-initiated file/shell/Git
-   I/O executes. Runs inside the bubblewrap sandbox.
-4. `packages/tools-builtin` — list/glob/grep/read/write/edit/apply-patch/shell/git handlers.
-5. `packages/runtime` — the turn state machine, stream normalization, budgets, cancellation,
-   basic recovery. Coordinates interfaces; performs no direct host I/O.
-6. E2E: fake model drives a real edit+test loop in a `FixtureRepo` through the whole pipeline.
-7. Security: file/shell/symlink/network escape attempts against the real sandbox.
+Remaining for 02 — THIS IS THE NEXT WORK:
 
-Gate: the deterministic minimal coding loop completes through deny-by-default policy and the real
-sandbox worker; sandbox attack tests pass. Then commit `checkpoint 02`.
+1. `packages/sandbox-linux` — real bubblewrap backend. IN FLIGHT. Must prove, on the host:
+   read-only denies workspace writes; workspace-write denies writes outside; `/root` and `~/.ssh`
+   invisible; network denied by default and grantable; the provider credential absent from the
+   child env; process group fully reaped.
+2. Fix the 4 red `packages/policy/src/engine.test.ts` cases (managed ceiling vs yolo; project-scoped
+   allow downgraded to no-opinion; project deny still applies; user action still denied by a deny-rule).
+3. `packages/tools-builtin` — list/glob/grep/read/write/edit/apply-patch/shell/git tool DEFINITIONS
+   bound to the worker handlers through `tools-core`.
+4. `packages/runtime` — turn state machine, stream normalization, budgets, cancellation, recovery.
+   Coordinates interfaces; performs NO direct host I/O (architecture gate enforces this).
+5. E2E (`evals/e2e/`): the fake model edits a `FixtureRepo`, runs its tests, and returns a durable
+   result through deny-by-default policy and the REAL sandbox worker.
+
+Gate for 02: that E2E passes, and file/shell/symlink/network escape attempts against the real
+sandbox all fail closed. Only then commit `checkpoint 02`.
+
+## Honest status
+
+The goal is **INCOMPLETE**. Checkpoints 00 and 01 are done and committed. Checkpoint 02 is roughly
+70% done. Checkpoints 03-10 (approvals/hooks; sessions/CLI/TUI; instructions/skills/context/memory;
+todo/tasks/background/Cron/worktrees; subagents/teams; MCP/OAuth; release hardening; live
+acceptance) have **not started**.
+
+Capability matrix: 0 VERIFIED, 29 IN_PROGRESS, 149 REQUIRED. No row can honestly be `VERIFIED`
+yet — most require `E` (deterministic golden path), `T` (PTY/TUI), or `L` (live DashScope) evidence,
+and the CLI, TUI, and live lanes do not exist yet. The provider contract IS proven against the real
+service (checkpoint 00), but that is a probe, not the `L` row evidence.
 
 ## Standing rules
 

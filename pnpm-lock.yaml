@@ -347,6 +347,9 @@ importers:
       '@qwen-harness/secret-store':
         specifier: workspace:*
         version: link:../secret-store
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -545,6 +548,9 @@ importers:
       '@qwen-harness/tools-core':
         specifier: workspace:*
         version: link:../tools-core
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -574,6 +580,9 @@ importers:
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
