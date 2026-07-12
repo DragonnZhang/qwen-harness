@@ -154,6 +154,39 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testkit
 
+  evals:
+    dependencies:
+      '@qwen-harness/policy':
+        specifier: workspace:*
+        version: link:../packages/policy
+      '@qwen-harness/protocol':
+        specifier: workspace:*
+        version: link:../packages/protocol
+      '@qwen-harness/provider-core':
+        specifier: workspace:*
+        version: link:../packages/provider-core
+      '@qwen-harness/provider-dashscope':
+        specifier: workspace:*
+        version: link:../packages/provider-dashscope
+      '@qwen-harness/runtime':
+        specifier: workspace:*
+        version: link:../packages/runtime
+      '@qwen-harness/storage':
+        specifier: workspace:*
+        version: link:../packages/storage
+      '@qwen-harness/testkit':
+        specifier: workspace:*
+        version: link:../packages/testkit
+      '@qwen-harness/tool-worker':
+        specifier: workspace:*
+        version: link:../packages/tool-worker
+      '@qwen-harness/tools-builtin':
+        specifier: workspace:*
+        version: link:../packages/tools-builtin
+      '@qwen-harness/tools-core':
+        specifier: workspace:*
+        version: link:../packages/tools-core
+
   packages/agents:
     dependencies:
       '@qwen-harness/policy':
@@ -570,6 +603,9 @@ importers:
       '@qwen-harness/tools-core':
         specifier: workspace:*
         version: link:../tools-core
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*

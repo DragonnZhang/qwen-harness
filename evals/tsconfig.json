@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "noEmit": false
+  },
+  "include": ["e2e/**/*", "live/**/*"],
+  "references": [
+    { "path": "../packages/protocol" },
+    { "path": "../packages/policy" },
+    { "path": "../packages/storage" },
+    { "path": "../packages/tools-core" },
+    { "path": "../packages/tools-builtin" },
+    { "path": "../packages/tool-worker" },
+    { "path": "../packages/provider-core" },
+    { "path": "../packages/provider-dashscope" },
+    { "path": "../packages/runtime" },
+    { "path": "../packages/testkit" }
+  ]
+}

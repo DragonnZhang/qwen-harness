@@ -11,7 +11,7 @@ Snapshot: 2026-07-12
 |---|---|
 | 00 preflight and contract probes | **PASSED** — `docs/execution/checkpoints/00-preflight-and-contract-probes.md` |
 | 01 workspace, protocol, storage, testkit | **PASSED** — commit `e2376a7`, evidence in `checkpoints/01-*.md` |
-| 02 safe vertical loop (worker, policy, sandbox, provider, tools) | **IN PROGRESS** |
+| 02 safe vertical loop (worker, policy, sandbox, provider, tools) | **PASSED** — evidence: `checkpoints/02-safe-vertical-loop.md`; E2E gate green |
 | 03 policy, sandbox, approvals, hooks | not started |
 | 04 sessions, recovery, CLI, TUI slice | not started |
 | 05 instructions, skills, context, memory | not started |
@@ -92,6 +92,43 @@ Remaining for 02 — THIS IS THE NEXT WORK:
 
 Gate for 02: that E2E passes, and file/shell/symlink/network escape attempts against the real
 sandbox all fail closed. Only then commit `checkpoint 02`.
+
+## Checkpoint 02 — near complete (updated)
+
+Committed and green (674 deterministic tests):
+- protocol/sanitize (40), tools-core (12), tool-worker path-escape (11) + sandboxed-tools
+  integration (7, REAL bwrap), sandbox-linux security (13 real-execution) + argv/unit/env (33),
+  policy (353), provider-core + provider-dashscope (84 + 64 contract), runtime core (18).
+- The tool-worker CLIENT spawns a fresh bubblewrap worker per call; the worker is a self-contained
+  esbuild BUNDLE (zod inlined) because there is no node_modules inside the sandbox. Request via a
+  scratch file, response via stdout. `pnpm --filter @qwen-harness/tool-worker run build` produces
+  `dist/worker.bundle.mjs` (gitignored). This is proven end-to-end against real bwrap.
+
+Key integration facts for whoever continues:
+- policy `PolicyEngine.evaluate(action, ctx)` where action is a `NormalizedAction` (file-read/
+  file-write/file-edit/patch/shell/git-read/git-write/network/mcp) and ctx has profile,
+  managedPolicy, rules, grants, workspaceRoot, homeDir, now, actor. Managed ceiling intersected LAST.
+- tool-worker RPC: `WorkerRequest` ops list/grep/read/write/edit/shell/git-status/git-diff, each
+  with `{handle:'workspace'|'scratch', relative}` scoped paths. `WorkerGrant` = readable/writable
+  handles + shell + network + limits.
+- provider: `ModelProvider.stream(ModelRequest): AsyncIterable<ProviderStreamEvent>`. runtime's
+  `RoundNormalizer` folds those into a `NormalizedRound`.
+- sandbox: `BubblewrapBackend` / `SandboxSpec` with `isolation:{mode,workspaceRoot,scratchRoot,
+  networkAllowed,extraBinds}`. `--cap-drop ALL`, no `/etc` bind, merged-/usr symlinks recreated.
+
+REMAINING for checkpoint 02 (then commit `checkpoint 02: <outcome>` and move to 03):
+1. `packages/tools-builtin` — tool DEFINITIONS (tools-core `ToolDefinition`) for read/write/edit/
+   list/grep/shell/git that (a) produce a `NormalizedAction` for policy and (b) produce a
+   `WorkerRequest` for the client. Bind the full pipeline: schema → semantic → policy → worker.
+2. A turn ENGINE (in `runtime` via injected interfaces, OR a thin composition in an app/eval) that
+   runs provider round → normalize → for each tool call: validate → policy.evaluate → (deny/ask/
+   allow) → tool-worker client → persist side-effect intent+result to storage → feed result back.
+   Persist the transition BEFORE presenting it (SS-05).
+3. E2E (`evals/e2e/`): a FAKE provider (testkit) drives an edit+failing-test→fix→passing-test loop
+   in a real `FixtureRepo`, through deny-by-default policy and the real sandbox worker, and the
+   final durable result is asserted. THIS is the checkpoint-02 gate.
+4. Then LIVE smoke (evals/live/) with the real key can be attempted — but that's bonus; the
+   deterministic E2E is the gate.
 
 ## Honest status
 

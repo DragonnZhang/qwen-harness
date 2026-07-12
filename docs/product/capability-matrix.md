@@ -29,12 +29,12 @@ Sources: [s01](https://learn.shareai.run/en/s01/), [s20](https://learn.shareai.r
 |---|---|---|---|
 | RT-01 | Durable message history drives a repeated model -> tool -> result -> model loop until an explicit terminal transition. | U,I,E,L | REQUIRED |
 | RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | REQUIRED |
-| RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | REQUIRED |
-| RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | REQUIRED |
+| RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | IN_PROGRESS |
+| RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | IN_PROGRESS |
 | RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | REQUIRED |
 | RT-06 | Cancellation propagates through one abort tree to model streams, tools, process groups, background work, MCP, subagents, teams, and UI. | I,F,T,E | REQUIRED |
 | RT-07 | Runtime supports steering input during a turn without corrupting current tool/result pairing, plus interrupt and resume. | U,I,T,E | REQUIRED |
-| RT-08 | Runtime is headless and deterministic under injected provider, tool, clock, ID, storage, policy, and notification interfaces. | U,I,E | REQUIRED |
+| RT-08 | Runtime is headless and deterministic under injected provider, tool, clock, ID, storage, policy, and notification interfaces. | U,I,E | IN_PROGRESS |
 | RT-09 | Thread -> Turn -> Item/Event schemas are versioned; unknown future events survive export/import without silent loss. | U,P,I | IN_PROGRESS |
 
 ## B. DashScope provider and normalized model protocol
@@ -64,12 +64,12 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | TL-01 | A registry binds stable name, description, input/output schema, annotations, permissions, concurrency metadata, timeout, cancellation, and handler. | U,I | IN_PROGRESS |
-| TL-02 | Built-ins cover directory listing/glob, text search, paged file read, write, edit, structured apply-patch, shell, Git status/diff, user interaction, and output retrieval. | U,I,S,E | REQUIRED |
+| TL-02 | Built-ins cover directory listing/glob, text search, paged file read, write, edit, structured apply-patch, shell, Git status/diff, user interaction, and output retrieval. | U,I,S,E | IN_PROGRESS |
 | TL-03 | File tools detect binary/encoding/size conditions, paginate large content, preserve line endings, and reject traversal, absolute-path escape, and symlink escape after canonicalization. | U,P,I,S | IN_PROGRESS |
-| TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | REQUIRED |
-| TL-05 | Shell supports cwd, environment allowlisting, stdout/stderr separation, partial streaming, timeout, cancellation, non-zero status, process-group cleanup, and optional PTY. | U,I,F,S,T | REQUIRED |
+| TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | IN_PROGRESS |
+| TL-05 | Shell supports cwd, environment allowlisting, stdout/stderr separation, partial streaming, timeout, cancellation, non-zero status, process-group cleanup, and optional PTY. | U,I,F,S,T | IN_PROGRESS |
 | TL-06 | Git tooling is read-safe by default, reports dirty state precisely, and never discards, resets, force-pushes, or rewrites history without exact approval. | U,I,S,E | REQUIRED |
-| TL-07 | Tool arguments pass schema validation -> semantic validation -> hard policy -> pre hooks -> permission -> sandbox -> execution. No alternate path bypasses this pipeline. | U,P,I,S | REQUIRED |
+| TL-07 | Tool arguments pass schema validation -> semantic validation -> hard policy -> pre hooks -> permission -> sandbox -> execution. No alternate path bypasses this pipeline. | U,P,I,S | IN_PROGRESS |
 | TL-08 | Multiple calls are partitioned in original order into safe parallel batches and serial side-effect batches based on actual arguments and resource conflicts. | U,P,I,F | IN_PROGRESS |
 | TL-09 | Fully assembled safe calls may start while the model continues streaming, while persistence and ordering prevent early-execution duplication. | U,I,F,L | REQUIRED |
 | TL-10 | Oversized output is sanitized, durably offloaded, and represented by a bounded preview plus a retrievable reference. | U,I,S,E | REQUIRED |
@@ -85,20 +85,20 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | PS-01 | Profiles are `plan`, `ask`, `auto-accept-edits`, and `yolo`, with documented compatibility aliases where useful. Current profile is visible in every client. | U,I,T,E | IN_PROGRESS |
-| PS-02 | `plan` exposes read/search/analysis only and enforces read-only isolation; unavailable mutations cannot be smuggled through shell, hooks, MCP, agents, or scripts. | U,P,I,S,E | REQUIRED |
+| PS-02 | `plan` exposes read/search/analysis only and enforces read-only isolation; unavailable mutations cannot be smuggled through shell, hooks, MCP, agents, or scripts. | U,P,I,S,E | IN_PROGRESS |
 | PS-03 | `ask` prompts for normalized side effects and supports exact once, session, or narrowly matched grants with expiry and revocation. | U,P,I,S,T | REQUIRED |
-| PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | REQUIRED |
-| PS-05 | `yolo` removes prompts and default isolation, grants the maximum authority allowed by managed policy, records the choice, and shows a persistent unspoofable danger indicator. Managed deny and credential/redaction invariants remain. | U,I,S,T | REQUIRED |
+| PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | IN_PROGRESS |
+| PS-05 | `yolo` removes prompts and default isolation, grants the maximum authority allowed by managed policy, records the choice, and shows a persistent unspoofable danger indicator. Managed deny and credential/redaction invariants remain. | U,I,S,T | IN_PROGRESS |
 | PS-06 | Decisions support allow/deny/ask/passthrough, hard deny dominates every scope, and content safety rules cannot be elevated by repository config or hooks. | U,P,I,S | IN_PROGRESS |
 | PS-07 | Managed policy is an immutable safety ceiling. Inside it, config provenance follows the exact per-source rules in `docs/product/defaults.md`; deny merges across scopes and doctor explains every winning value. | U,P,I,S,D | IN_PROGRESS |
 | PS-08 | Children and session work inherit no more than their parent; durable/background/Cron work uses the intersection of its captured creation-time ceiling and current managed policy. | U,P,I,S,E | IN_PROGRESS |
 | PS-09 | Permission requests from children bubble to the owning interactive thread with actor, full exact action, risk, scope options, and correlation ID. | U,I,S,T,E | REQUIRED |
 | PS-10 | Repeated denials and prompt fatigue are handled without silently upgrading authority; automated classification may reduce prompts only inside hard policy. | U,P,I,S | REQUIRED |
 | PS-11 | Protected paths have explicit classifications and behavior in every profile; repository rules, shell indirection, symlinks, hooks, or child agents cannot downgrade them. | U,P,I,S,T | IN_PROGRESS |
-| SB-01 | Linux isolation has a real backend using bubblewrap/namespaces or an equally strong documented backend; degraded policy-only mode is explicit and fails the release gate. | U,I,S,E | REQUIRED |
-| SB-02 | Sandbox controls canonical filesystem paths, process tree, environment, network, devices, IPC, resource/output limits, and cleanup. | P,I,F,S | REQUIRED |
-| SB-03 | Sandbox capability detection and diagnostics run at startup and through `doctor`; an unavailable required backend fails safe. | U,I,E,D | REQUIRED |
-| SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | REQUIRED |
+| SB-01 | Linux isolation has a real backend using bubblewrap/namespaces or an equally strong documented backend; degraded policy-only mode is explicit and fails the release gate. | U,I,S,E | IN_PROGRESS |
+| SB-02 | Sandbox controls canonical filesystem paths, process tree, environment, network, devices, IPC, resource/output limits, and cleanup. | P,I,F,S | IN_PROGRESS |
+| SB-03 | Sandbox capability detection and diagnostics run at startup and through `doctor`; an unavailable required backend fails safe. | U,I,E,D | IN_PROGRESS |
+| SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | IN_PROGRESS |
 | HK-01 | Implement these 30 hook events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop, StopFailure, Setup, UserPromptSubmit, Notification, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, PreCompact, PostCompact, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, and PostToolBatch. | U,I,E | REQUIRED |
 | HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | REQUIRED |
 | HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | REQUIRED |
@@ -189,7 +189,7 @@ Source: [s11](https://learn.shareai.run/en/s11/) and [Claude Code error referenc
 | ER-03 | Transient network/rate/server errors retry before visible side effects; after visible output or tool execution, recovery avoids blind replay and asks/continues safely. | U,P,I,F,L | REQUIRED |
 | ER-04 | Image/media validation, stream abort, tool abort, hook block, token-budget continuation, overload, and unsupported capabilities have distinct typed paths. | U,I,F | REQUIRED |
 | ER-05 | Retry, continuation, compaction, fallback, and blocking limits are configurable, visible, and produce explicit final reasons. | U,P,I,T | REQUIRED |
-| ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | REQUIRED |
+| ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | IN_PROGRESS |
 | ER-07 | Recovery never drops partial evidence, leaks secrets, leaves orphan processes, corrupts terminal mode, or marks an indeterminate side effect complete. | I,F,S,T,E | REQUIRED |
 
 ## J. Background tasks and Cron
