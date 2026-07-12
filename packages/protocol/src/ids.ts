@@ -41,6 +41,16 @@ export const TurnIdSchema = idSchema<'TurnId'>('trn');
 export const ItemIdSchema = idSchema<'ItemId'>('itm');
 export const EventIdSchema = idSchema<'EventId'>('evt');
 export const ToolCallIdSchema = idSchema<'ToolCallId'>('call');
+
+/**
+ * A provider's function-call ID. UNLIKE our internal IDs, this is EXTERNAL data — an opaque string
+ * the model service minted, which we preserve byte-for-byte to pair outputs correctly (PV-06). It
+ * must NOT be validated against our internal id format: a provider is free to shape it however it
+ * likes (DashScope uses `call_<hex>`, but we do not depend on that). We only require it be a
+ * non-empty, bounded string, so a hostile provider cannot smuggle megabytes through it.
+ */
+export type ProviderCallId = string;
+export const ProviderCallIdSchema = z.string().min(1).max(256);
 export const CorrelationIdSchema = idSchema<'CorrelationId'>('cor');
 export const CausationIdSchema = idSchema<'CausationId'>('cau');
 export const ActorIdSchema = idSchema<'ActorId'>('act');

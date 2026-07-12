@@ -4,7 +4,7 @@ import {
   ActorIdSchema,
   ItemIdSchema,
   ThreadIdSchema,
-  ToolCallIdSchema,
+  ProviderCallIdSchema,
   TurnIdSchema,
 } from './ids.ts';
 
@@ -289,7 +289,7 @@ export const ReasoningStatusItemSchema = z.object({
 export const ToolCallItemSchema = z.object({
   ...ItemBase,
   type: z.literal('tool-call'),
-  callId: ToolCallIdSchema,
+  callId: ProviderCallIdSchema,
   toolName: z.string().min(1).max(200),
   /** Raw argument JSON as the model produced it, retained for audit and exact-approval binding. */
   argumentsJson: z.string(),
@@ -300,7 +300,7 @@ export const ToolCallItemSchema = z.object({
 export const ToolResultItemSchema = z.object({
   ...ItemBase,
   type: z.literal('tool-result'),
-  callId: ToolCallIdSchema,
+  callId: ProviderCallIdSchema,
   toolName: z.string(),
   ok: z.boolean(),
   /** Bounded preview; full payload lives behind `outputRef` when offloaded (TL-10). */
@@ -314,7 +314,7 @@ export const ToolResultItemSchema = z.object({
 export const ApprovalItemSchema = z.object({
   ...ItemBase,
   type: z.literal('approval'),
-  callId: ToolCallIdSchema.nullable(),
+  callId: ProviderCallIdSchema.nullable(),
   decision: z.enum(['allow', 'deny', 'ask', 'passthrough']),
   scope: z.enum(['once', 'session', 'rule']).nullable(),
   /** The exact normalized action the user saw. Approval binds to THIS, not to a tool name. */

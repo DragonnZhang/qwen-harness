@@ -18,3 +18,13 @@ export { BudgetTracker, DEFAULT_BUDGET } from './budget.ts';
 export type { BudgetLimits, BudgetSnapshot, BudgetVerdict } from './budget.ts';
 export { RoundNormalizer, normalizeRound } from './normalizer.ts';
 export type { NormalizedRound, NormalizedToolCall } from './normalizer.ts';
+
+export { TurnEngine } from './turn-engine.ts';
+export type {
+  TurnEngineDeps,
+  RunTurnInput,
+  TurnResult,
+  EventSink,
+  ToolExecutor,
+  ToolExecutionResult,
+} from './turn-engine.ts';

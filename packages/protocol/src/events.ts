@@ -15,7 +15,7 @@ import {
   ItemIdSchema,
   SideEffectIdSchema,
   ThreadIdSchema,
-  ToolCallIdSchema,
+  ProviderCallIdSchema,
   TurnIdSchema,
 } from './ids.ts';
 
@@ -139,7 +139,7 @@ export const EventPayloadSchema = z.discriminatedUnion('type', [
   }),
 
   payload('policy-decision', {
-    callId: ToolCallIdSchema.nullable(),
+    callId: ProviderCallIdSchema.nullable(),
     normalizedAction: z.string(),
     decision: z.enum(['allow', 'deny', 'ask', 'passthrough']),
     /** Which rule/source won, so `doctor` can explain every decision (PS-07). */
@@ -147,12 +147,12 @@ export const EventPayloadSchema = z.discriminatedUnion('type', [
     source: z.string(),
   }),
   payload('approval-requested', {
-    callId: ToolCallIdSchema.nullable(),
+    callId: ProviderCallIdSchema.nullable(),
     normalizedAction: z.string(),
     risk: z.enum(['low', 'medium', 'high']),
   }),
   payload('approval-resolved', {
-    callId: ToolCallIdSchema.nullable(),
+    callId: ProviderCallIdSchema.nullable(),
     granted: z.boolean(),
     scope: z.enum(['once', 'session', 'rule']).nullable(),
   }),
