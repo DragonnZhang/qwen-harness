@@ -28,8 +28,28 @@ captured a request ID, leaked no secret. `test:live` fails closed (exit 1) witho
 checkpoint-10 live suite (recovery, edit+test+diff, subagent/team/MCP/compaction smokes) is still
 required for final completion.
 
-**Checkpoints 00, 01, 02 are COMPLETE and committed.** 696 deterministic + 2 live tests pass.
-Latest commit: `174dbbd`. Next: checkpoint 03.
+**Checkpoints 00, 01, 02 COMPLETE and committed.** Checkpoint 03 is IN PROGRESS (config + hooks
+done; profiles are wired via policy; approvals/protected-paths end-to-end and the domain hook
+emissions remain). The persisted turn engine (checkpoint-04 groundwork) is also done.
+799 deterministic + 4 e2e + 2 live tests pass. Latest commit: `6daabf2`.
+
+Done since checkpoint 02:
+- `packages/runtime/turn-engine.ts` — the persisted agent loop over injected interfaces
+  (provider/tools/sink). Persists side-effect intent BEFORE execution and result before continuing
+  (SS-05). Proven against the REAL event store: intent→started→settled ordering, named termination
+  reasons, refuses replay of a completed side effect. `ProviderCallId` added (opaque external IDs).
+- `packages/config` — layered config with per-value provenance, two merge strategies (override +
+  deny-first), tighten-only managed ceiling, v0→v1 migration. 60 tests.
+- `packages/hooks` — hook engine + 30 events. A hook allow can never flip a policy deny/ask; modified
+  input is revalidated; output sanitized+attributed; Stop re-entry refused. 45 tests.
+- Hardened `gen-packages` to preserve custom build scripts; refined architecture rule 6 (forbid
+  reading the credential, allow naming it).
+
+Next for checkpoint 03: wire the four profiles + approvals + protected paths through the turn engine
+end-to-end (an approval pauses/resumes the same turn), and emit the checkpoint-03-owned hook events
+(PreToolUse/PostToolUse/PostToolUseFailure/UserPromptSubmit/PermissionRequest/PermissionDenied/
+Stop/StopFailure/Setup/SessionStart/SessionEnd/Notification) from their real domain paths.
+Then checkpoint 04: sessions, recovery, the daemon, the headless CLI, and the Ink TUI vertical slice.
 
 ## Settled — do not re-litigate
 

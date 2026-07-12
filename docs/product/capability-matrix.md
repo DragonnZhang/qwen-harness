@@ -27,11 +27,11 @@ Sources: [s01](https://learn.shareai.run/en/s01/), [s20](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| RT-01 | Durable message history drives a repeated model -> tool -> result -> model loop until an explicit terminal transition. | U,I,E,L | REQUIRED |
+| RT-01 | Durable message history drives a repeated model -> tool -> result -> model loop until an explicit terminal transition. | U,I,E,L | IN_PROGRESS |
 | RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | REQUIRED |
 | RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | IN_PROGRESS |
 | RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | IN_PROGRESS |
-| RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | REQUIRED |
+| RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | IN_PROGRESS |
 | RT-06 | Cancellation propagates through one abort tree to model streams, tools, process groups, background work, MCP, subagents, teams, and UI. | I,F,T,E | REQUIRED |
 | RT-07 | Runtime supports steering input during a turn without corrupting current tool/result pairing, plus interrupt and resume. | U,I,T,E | REQUIRED |
 | RT-08 | Runtime is headless and deterministic under injected provider, tool, clock, ID, storage, policy, and notification interfaces. | U,I,E | IN_PROGRESS |
@@ -99,11 +99,11 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | SB-02 | Sandbox controls canonical filesystem paths, process tree, environment, network, devices, IPC, resource/output limits, and cleanup. | P,I,F,S | IN_PROGRESS |
 | SB-03 | Sandbox capability detection and diagnostics run at startup and through `doctor`; an unavailable required backend fails safe. | U,I,E,D | IN_PROGRESS |
 | SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | IN_PROGRESS |
-| HK-01 | Implement these 30 hook events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop, StopFailure, Setup, UserPromptSubmit, Notification, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, PreCompact, PostCompact, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, and PostToolBatch. | U,I,E | REQUIRED |
+| HK-01 | Implement these 30 hook events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop, StopFailure, Setup, UserPromptSubmit, Notification, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, PreCompact, PostCompact, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, and PostToolBatch. | U,I,E | IN_PROGRESS |
 | HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | REQUIRED |
-| HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | REQUIRED |
-| HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | REQUIRED |
-| HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | REQUIRED |
+| HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | IN_PROGRESS |
+| HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | IN_PROGRESS |
+| HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | IN_PROGRESS |
 
 ## E. Todo, durable task graph, and plans
 
@@ -301,7 +301,7 @@ These capabilities are required to make every timeline feature usable rather tha
 | QL-04 | Tests include unit, property, contract, integration, failure injection, security, PTY, performance, deterministic evals, and credentialed live E2E without flaky pass-through. | P,I,F,S,T,E,L | REQUIRED |
 | PK-01 | Clean Linux host bootstrap installs pinned Node active LTS/pnpm and required sandbox/terminal dependencies or reports exact unavailable prerequisites. | I,F,D | REQUIRED |
 | PK-02 | Build produces a versioned CLI package with lockfile, integrity, install/uninstall, config migration, upgrade/rollback, and shell completion. | I,F,E,D | REQUIRED |
-| PK-03 | Managed policy is an immutable deny-first ceiling; ordinary and MCP values use the exact per-key precedence in defaults, with schema migration, conflict tests, and source explanation. | U,P,I,S,D | REQUIRED |
+| PK-03 | Managed policy is an immutable deny-first ceiling; ordinary and MCP values use the exact per-key precedence in defaults, with schema migration, conflict tests, and source explanation. | U,P,I,S,D | IN_PROGRESS |
 | PK-04 | Release artifacts, changelog, migration notes, support bundle, SBOM/dependency audit, and reproducible verification are generated without secrets. | I,S,D | REQUIRED |
 
 ## Final cross-capability golden paths
