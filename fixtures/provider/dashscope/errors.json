@@ -1,0 +1,34 @@
+{
+  "model_not_found": {
+    "http": 404,
+    "body": {
+      "error": {
+        "message": "The model `qwen-nonexistent-zzz` does not exist or you do not have access to it.",
+        "type": "invalid_request_error",
+        "param": null,
+        "code": "model_not_found"
+      },
+      "request_id": "<REDACTED-REQUEST-ID>"
+    }
+  },
+  "invalid_api_key": {
+    "http": 401,
+    "body": {
+      "error": {
+        "message": "Incorrect API key provided.",
+        "type": "invalid_request_error",
+        "param": null,
+        "code": "invalid_api_key"
+      },
+      "request_id": "<REDACTED-REQUEST-ID>"
+    }
+  },
+  "background_unsupported": {
+    "http": 400,
+    "body": {
+      "request_id": "<REDACTED-REQUEST-ID>",
+      "code": "InvalidParameter",
+      "message": "Currently not support background."
+    }
+  }
+}

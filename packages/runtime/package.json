@@ -1,0 +1,41 @@
+{
+  "name": "@qwen-harness/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/storage": "workspace:*",
+    "@qwen-harness/provider-core": "workspace:*",
+    "@qwen-harness/tools-core": "workspace:*",
+    "@qwen-harness/policy": "workspace:*",
+    "@qwen-harness/hooks": "workspace:*",
+    "@qwen-harness/instructions": "workspace:*",
+    "@qwen-harness/context": "workspace:*",
+    "@qwen-harness/memory": "workspace:*",
+    "@qwen-harness/tasks": "workspace:*",
+    "@qwen-harness/background": "workspace:*",
+    "@qwen-harness/scheduler": "workspace:*",
+    "@qwen-harness/agents": "workspace:*",
+    "@qwen-harness/teams": "workspace:*",
+    "@qwen-harness/worktrees": "workspace:*",
+    "@qwen-harness/mcp": "workspace:*",
+    "@qwen-harness/telemetry": "workspace:*"
+  },
+  "devDependencies": {
+    "@qwen-harness/testkit": "workspace:*"
+  }
+}

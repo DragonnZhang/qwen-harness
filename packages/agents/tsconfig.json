@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"],
+  "references": [
+    {
+      "path": "../../packages/protocol"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/provider-core"
+    },
+    {
+      "path": "../../packages/tools-core"
+    }
+  ]
+}

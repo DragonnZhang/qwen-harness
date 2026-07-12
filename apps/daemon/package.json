@@ -1,0 +1,34 @@
+{
+  "name": "@qwen-harness/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/runtime": "workspace:*",
+    "@qwen-harness/storage": "workspace:*",
+    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/telemetry": "workspace:*",
+    "@qwen-harness/provider-dashscope": "workspace:*",
+    "@qwen-harness/tools-builtin": "workspace:*",
+    "@qwen-harness/sandbox-linux": "workspace:*"
+  },
+  "bin": {
+    "qwen-harness-daemon": "./dist/bin.js"
+  },
+  "devDependencies": {
+    "@qwen-harness/testkit": "workspace:*"
+  }
+}

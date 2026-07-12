@@ -1,0 +1,98 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/provider-core"
+    },
+    {
+      "path": "./packages/tools-core"
+    },
+    {
+      "path": "./packages/policy"
+    },
+    {
+      "path": "./packages/secret-store"
+    },
+    {
+      "path": "./packages/provider-dashscope"
+    },
+    {
+      "path": "./packages/sandbox-linux"
+    },
+    {
+      "path": "./packages/network"
+    },
+    {
+      "path": "./packages/tool-worker"
+    },
+    {
+      "path": "./packages/tools-builtin"
+    },
+    {
+      "path": "./packages/hooks"
+    },
+    {
+      "path": "./packages/instructions"
+    },
+    {
+      "path": "./packages/context"
+    },
+    {
+      "path": "./packages/memory"
+    },
+    {
+      "path": "./packages/tasks"
+    },
+    {
+      "path": "./packages/telemetry"
+    },
+    {
+      "path": "./packages/worktrees"
+    },
+    {
+      "path": "./packages/background"
+    },
+    {
+      "path": "./packages/scheduler"
+    },
+    {
+      "path": "./packages/agents"
+    },
+    {
+      "path": "./packages/teams"
+    },
+    {
+      "path": "./packages/mcp"
+    },
+    {
+      "path": "./packages/tui-kit"
+    },
+    {
+      "path": "./packages/runtime"
+    },
+    {
+      "path": "./apps/daemon"
+    },
+    {
+      "path": "./apps/remote-worker"
+    },
+    {
+      "path": "./apps/cli"
+    },
+    {
+      "path": "./apps/tui"
+    },
+    {
+      "path": "./packages/testkit"
+    }
+  ]
+}

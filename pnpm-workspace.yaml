@@ -1,0 +1,12 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'evals'
+
+# pnpm 11 reads build-script approval from this file (`allowBuilds`), not from package.json.
+# better-sqlite3 and node-pty have no prebuilt binary for Ubuntu 26.10 / Node 24 and compile
+# from source, which is why `build-essential` is a documented clean-host prerequisite (PK-01).
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  node-pty: true

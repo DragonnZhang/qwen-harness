@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Captured provider contract fixtures are verbatim wire evidence. Reformatting them would
+# destroy their value as a faithful record of what the service actually sent.
+fixtures/provider/
+
+# The specification is the frozen source of truth (snapshot 2026-07-12). Prettier reflows
+# Markdown tables, which churns the frozen documents and makes a real content change hard to see
+# in review. We edit their CONTENT (e.g. matrix status), never their formatting.
+docs/
+*.md

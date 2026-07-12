@@ -1,0 +1,26 @@
+{
+  "name": "@qwen-harness/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "@qwen-harness/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@qwen-harness/testkit": "workspace:*"
+  }
+}

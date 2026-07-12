@@ -38,3 +38,7 @@ playwright-report/
 .vscode/
 *.swp
 *~
+
+# Workspace build output
+packages/*/dist/
+apps/*/dist/

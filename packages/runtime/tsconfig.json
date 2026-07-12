@@ -1,0 +1,66 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"],
+  "references": [
+    {
+      "path": "../../packages/protocol"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/provider-core"
+    },
+    {
+      "path": "../../packages/tools-core"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/hooks"
+    },
+    {
+      "path": "../../packages/instructions"
+    },
+    {
+      "path": "../../packages/context"
+    },
+    {
+      "path": "../../packages/memory"
+    },
+    {
+      "path": "../../packages/tasks"
+    },
+    {
+      "path": "../../packages/background"
+    },
+    {
+      "path": "../../packages/scheduler"
+    },
+    {
+      "path": "../../packages/agents"
+    },
+    {
+      "path": "../../packages/teams"
+    },
+    {
+      "path": "../../packages/worktrees"
+    },
+    {
+      "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../packages/telemetry"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "qwen-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone coding-agent harness with a headless runtime and an Ink terminal UI, backed by DashScope qwen3.7-max.",
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --build --force",
+    "build": "tsc --build",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:security": "vitest run --project security",
+    "test:pty": "vitest run --project pty",
+    "test:e2e": "vitest run --project e2e",
+    "test:live": "vitest run --project live",
+    "test:performance": "vitest run --project performance",
+    "test:migrations": "vitest run --project migrations",
+    "architecture": "tsx scripts/architecture.ts",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm architecture && pnpm build && pnpm test && pnpm test:integration && pnpm test:security && pnpm test:migrations && pnpm test:pty && pnpm test:e2e && pnpm test:performance && pnpm secrets:scan",
+    "secrets:scan": "tsx scripts/secret-scan.ts",
+    "doctor": "node apps/cli/dist/bin.js doctor",
+    "probe:host": "bash scripts/probe-host.sh",
+    "clean": "rm -rf packages/*/dist apps/*/dist packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@typescript-eslint/eslint-plugin": "8.46.0",
+    "@typescript-eslint/parser": "8.46.0",
+    "@vitest/coverage-v8": "4.1.10",
+    "esbuild": "0.25.10",
+    "eslint": "9.39.0",
+    "prettier": "3.9.5",
+    "tsx": "4.23.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

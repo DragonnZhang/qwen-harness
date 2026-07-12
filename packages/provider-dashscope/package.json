@@ -1,0 +1,26 @@
+{
+  "name": "@qwen-harness/provider-dashscope",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/provider-core": "workspace:*",
+    "@qwen-harness/secret-store": "workspace:*"
+  },
+  "devDependencies": {
+    "@qwen-harness/testkit": "workspace:*"
+  }
+}

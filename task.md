@@ -187,17 +187,17 @@ Requirements:
 2. Freeze `background=false` and `structuredOutput=false`. A successful response cannot upgrade these because unsupported parameters may be ignored; only newer official documentation plus a contract fixture and ADR can change them.
 3. Use this transport capability table:
 
-   | Capability | Responses | Chat Completions |
-   |---|---|---|
-   | text streaming | supported | supported |
-   | reasoning summary | supported when returned | unsupported |
-   | reasoning effort granularity | none/minimal/low/medium/high | binary thinking only |
-   | raw reasoning | never expose or persist | discard; do not relabel as summary |
-   | custom function calling | supported | supported |
+   | Capability                   | Responses                                   | Chat Completions                        |
+   | ---------------------------- | ------------------------------------------- | --------------------------------------- |
+   | text streaming               | supported                                   | supported                               |
+   | reasoning summary            | supported when returned                     | unsupported                             |
+   | reasoning effort granularity | none/minimal/low/medium/high                | binary thinking only                    |
+   | raw reasoning                | never expose or persist                     | discard; do not relabel as summary      |
+   | custom function calling      | supported                                   | supported                               |
    | incremental custom arguments | do not assume; completed item is sufficient | assemble `delta.tool_calls` by index/ID |
-   | complex `tool_stream` | not applicable | optional vendor capability |
-   | provider background mode | unsupported | not applicable |
-   | structured output | unsupported | unsupported |
+   | complex `tool_stream`        | not applicable                              | optional vendor capability              |
+   | provider background mode     | unsupported                                 | not applicable                          |
+   | structured output            | unsupported                                 | unsupported                             |
 
 4. Normalize streamed text, supported reasoning summary, tool calls, finish states, errors, request IDs, and usage into provider-core events.
 5. Do not expose or persist private raw chain-of-thought. Chat `reasoning_content` is not a reasoning summary and must be discarded or represented only as a non-content status.

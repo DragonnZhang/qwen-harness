@@ -1,0 +1,31 @@
+{
+  "name": "@qwen-harness/tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/runtime": "workspace:*",
+    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/tui-kit": "workspace:*",
+    "@qwen-harness/telemetry": "workspace:*"
+  },
+  "bin": {
+    "qwen-harness-tui": "./dist/bin.js"
+  },
+  "devDependencies": {
+    "@qwen-harness/testkit": "workspace:*"
+  }
+}
