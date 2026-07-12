@@ -28,7 +28,7 @@ Sources: [s01](https://learn.shareai.run/en/s01/), [s20](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | RT-01 | Durable message history drives a repeated model -> tool -> result -> model loop until an explicit terminal transition. | U,I,E,L | IN_PROGRESS |
-| RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | REQUIRED |
+| RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | IN_PROGRESS |
 | RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | IN_PROGRESS |
 | RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | IN_PROGRESS |
 | RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | IN_PROGRESS |
@@ -278,7 +278,7 @@ Sources: [Claude Code interactive mode](https://code.claude.com/docs/en/interact
 | UI-12 | Status line can show cwd/worktree, Git, model, mode, context, usage/cost, duration, rate/backoff, background count, team state, and cache without leaking secrets. | U,S,T | REQUIRED |
 | UI-13 | Resize from narrow to large terminals, suspend/resume, SSH disconnect, signal exit, uncaught error, child PTY, and normal exit always restore cursor, raw mode, echo, and screen state. | P,I,F,T | REQUIRED |
 | UI-14 | Performance spike passes the payloads and p95 latency/RSS thresholds in `docs/quality/acceptance.md`, including 10K rows, 50K live characters, unfinished Markdown, 2K-line diff, and resize. | P,T | REQUIRED |
-| UI-15 | Headless CLI supports interactive plain text, one-shot prompt, stdin, structured JSON/JSONL events, quiet/no-color, exit codes, resume, approvals through a typed channel, and deterministic automation. | U,I,E | REQUIRED |
+| UI-15 | Headless CLI supports interactive plain text, one-shot prompt, stdin, structured JSON/JSONL events, quiet/no-color, exit codes, resume, approvals through a typed channel, and deterministic automation. | U,I,E | IN_PROGRESS |
 | UI-16 | Required commands and aliases are `/help`, `/doctor`, `/config`, `/permissions`, `/model`, `/mode`, `/prompt-mode`, `/plan`, `/context`, `/compact`, `/memory`, `/skills`, `/hooks`, `/mcp`, `/tasks`, `/agents`, `/team`, `/background`, `/cron`, `/loop`, `/worktree`, `/sessions`, `/resume`, `/branch`, `/rewind`, `/recap`, `/btw`, `/tui`, `/status`, `/export`, `/clear`, and `/quit`. | U,T,E,D | REQUIRED |
 | UI-17 | `/btw` answers a side question without tools or main-task-history pollution and reports its separate provider usage. | U,T,E,L | REQUIRED |
 | UI-18 | Create a session-local checkpoint before every model-initiated file change. `/rewind` can restore conversation, code, or both after stale-file checks; shell/network/MCP/external side effects are explicitly non-rewindable. | U,P,I,F,S,T,E | REQUIRED |
@@ -291,7 +291,7 @@ These capabilities are required to make every timeline feature usable rather tha
 |---|---|---|---|
 | OB-01 | Local structured trace records redacted model parameters, items, tools, policy, approvals, hooks, timings, retries, compaction, cancellation, usage, and acceptance evidence. | U,I,S,E | REQUIRED |
 | OB-02 | Logs, metrics, trace, and current state are readable by humans and implementing agents through CLI/JSON; verbosity and retention are configurable and telemetry is opt-in. | U,I,S,D | REQUIRED |
-| OB-03 | Doctor reports environment, config provenance, provider capabilities, credential presence without value, sandbox, terminal, Git, MCP, storage, migrations, and known degradation. | U,I,S,T,D | REQUIRED |
+| OB-03 | Doctor reports environment, config provenance, provider capabilities, credential presence without value, sandbox, terminal, Git, MCP, storage, migrations, and known degradation. | U,I,S,T,D | IN_PROGRESS |
 | SC-01 | Adversarial suite covers malicious repository instructions, secret exfiltration, path/symlink escape, shell indirection, package/Git hooks, MCP abuse, ANSI/OSC spoofing, approval confusion, and resource exhaustion. | P,I,S,E | REQUIRED |
 | SC-02 | Repository content is untrusted context and cannot elevate tools, policy, network, secret access, hooks, skills, or managed configuration. | U,P,I,S | REQUIRED |
 | SC-03 | Audit records actor, normalized action, policy inputs, decision, grant scope, sandbox, result identity, and redacted errors for every side effect. | U,P,I,S | REQUIRED |

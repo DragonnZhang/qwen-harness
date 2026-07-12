@@ -45,11 +45,51 @@ Done since checkpoint 02:
 - Hardened `gen-packages` to preserve custom build scripts; refined architecture rule 6 (forbid
   reading the credential, allow naming it).
 
-Next for checkpoint 03: wire the four profiles + approvals + protected paths through the turn engine
-end-to-end (an approval pauses/resumes the same turn), and emit the checkpoint-03-owned hook events
+### RUNNABLE MILESTONE (2026-07-13)
+
+**The harness runs, and the live model completes real coding tasks through it.**
+
+- `apps/cli` is the composition root: `qwen-harness doctor` and `qwen-harness run <prompt>`.
+- `doctor` reports platform, sandbox probes, config provenance, and credential presence (never value).
+- `run` drives config → DashScope adapter → turn engine → tool pipeline (schema→policy→sandbox) →
+  SQLite store. Headless (text/--json, stable exit codes).
+- **LIVE VERIFIED**: `qwen3.7-max` read a file, fixed a bug with `edit_file`, ran the test with
+  `run_shell` in the bubblewrap sandbox, saw PASS, returned `state: completed`. Independent check
+  confirmed. Evidence: `docs/execution/checkpoints/04-live-coding-loop.md`.
+- **Deterministic counterpart**: `apps/cli/test/integration/cli-run.test.ts` (scripted provider, real
+  sandbox) — reproducible in `pnpm check`.
+
+Test totals: **806 deterministic** (52 files) + 2 live provider + 1 live coding loop, all passing.
+All gates green: format, lint, typecheck, architecture (7/7, 90 files), secrets. Latest commit after
+this update.
+
+### Remaining — resumable work list
+
+Checkpoint 03 (finish): wire the four profiles + approvals + protected paths through the turn engine
+so an approval PAUSES and RESUMES the same turn (currently the CLI runs yolo/auto without an
+interactive approval channel); emit the checkpoint-03-owned hook events from real domain paths
 (PreToolUse/PostToolUse/PostToolUseFailure/UserPromptSubmit/PermissionRequest/PermissionDenied/
-Stop/StopFailure/Setup/SessionStart/SessionEnd/Notification) from their real domain paths.
-Then checkpoint 04: sessions, recovery, the daemon, the headless CLI, and the Ink TUI vertical slice.
+Stop/StopFailure/Setup/SessionStart/SessionEnd/Notification). The hook ENGINE exists; it needs to be
+CALLED from the turn engine's tool loop.
+
+Checkpoint 04 (finish): the per-user supervisor daemon + versioned Unix-socket protocol (SS-08),
+session resume/fork/export in the CLI surface, and the Ink TUI vertical slice (`tui-kit` + `apps/tui`).
+The Ink spike already passed (ADR 0004); `tui-kit` and `telemetry` packages are scaffolded but empty.
+
+Checkpoints 05-10: instructions/skills/context/memory; todo/tasks/background/Cron/worktrees;
+subagents/teams; MCP/OAuth; release hardening (packaging, PK-01/PK-02, all docs); final integrated +
+full live acceptance (all ten golden paths, the complete live suite).
+
+### How to resume
+
+1. Read this file and `git log --oneline`. Everything is committed on `main`.
+2. `pnpm install` then `pnpm --filter @qwen-harness/tool-worker run build` (produces the worker bundle).
+3. `pnpm exec vitest run --project unit --project integration --project security --project e2e` to
+   confirm the 806 green baseline.
+4. `DASHSCOPE_API_KEY` is in `.env`; `pnpm test:live` runs the live smokes; `node apps/cli/dist/bin.js
+   doctor` after a build shows the environment.
+5. Pick up the checkpoint-03/04 finish items above. The turn engine (`packages/runtime/turn-engine.ts`)
+   is where approvals + hooks integrate; the daemon/TUI are new apps.
 
 ## Settled — do not re-litigate
 
