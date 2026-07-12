@@ -13,6 +13,9 @@
     },
     {
       "path": "../../packages/provider-core"
+    },
+    {
+      "path": "../../packages/secret-store"
     }
   ]
 }

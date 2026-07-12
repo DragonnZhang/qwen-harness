@@ -55,6 +55,14 @@ for (const [name, deps] of Object.entries(PACKAGE_DEPS) as [PackageName, Package
   const existing = existsSync(pkgPath)
     ? (JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, unknown>)
     : {};
+
+  // Preserve hand-authored scripts (e.g. tool-worker's esbuild bundle step). The generator only
+  // guarantees `build`/`clean` EXIST; it must never clobber a package's custom build. Re-running
+  // this generator used to silently strip the worker bundle build — a real hazard when several
+  // agents regenerate concurrently — so existing scripts win over the defaults here.
+  const existingScripts = (existing['scripts'] as Record<string, string> | undefined) ?? {};
+  pkg['scripts'] = { ...(pkg['scripts'] as object), ...existingScripts };
+
   // Preserve hand-added external dependencies; regenerate only the workspace wiring.
   const externalDeps = Object.fromEntries(
     Object.entries((existing['dependencies'] as Record<string, string>) ?? {}).filter(

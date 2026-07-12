@@ -233,6 +233,9 @@ importers:
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -256,18 +259,15 @@ importers:
 
   packages/hooks:
     dependencies:
-      '@qwen-harness/config':
-        specifier: workspace:*
-        version: link:../config
-      '@qwen-harness/network':
-        specifier: workspace:*
-        version: link:../network
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../policy
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*

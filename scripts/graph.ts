@@ -150,7 +150,15 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
   network: ['protocol', 'policy', 'config'],
   'tool-worker': ['protocol', 'tools-core', 'policy', 'sandbox-linux'],
   'tools-builtin': ['protocol', 'tools-core', 'policy', 'tool-worker'],
-  hooks: ['protocol', 'policy', 'config', 'network'],
+  // NOTE(hooks impl): `config` has no src/index.ts yet, so it is not buildable/importable. Per the
+  // hooks build brief, drop `config` for now (hooks does not consume config in this checkpoint) and
+  // keep `network` — HTTP hooks route through the network broker, which hooks depends on
+  // STRUCTURALLY (an injected NetworkBroker port, no direct import), so this is safe today. Restore
+  // 'config' here once packages/config/src/index.ts exists.
+  // hooks imports only protocol + policy. Its integration with config (hook configuration) and
+  // network (HTTP-hook egress) is via INJECTED ports (see packages/hooks/src/ports.ts), not a
+  // package dependency — which keeps the hook engine decoupled and testable without those packages.
+  hooks: ['protocol', 'policy'],
   instructions: ['protocol', 'config'],
   context: ['protocol', 'provider-core', 'storage'],
   memory: ['protocol', 'config', 'storage'],

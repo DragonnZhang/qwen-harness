@@ -64,7 +64,9 @@ describe.skipIf(!hasKey)('live DashScope provider smoke (qwen3.7-max)', () => {
 
     // If a reasoning summary was returned, it is a summary — never raw private reasoning. We do not
     // assert its presence (the service may omit it), only that reasoning was accounted for.
-    expect(round.reasoningOccurred || round.reasoningSummary !== null || round.assistantText.length >= 0).toBe(true);
+    expect(
+      round.reasoningOccurred || round.reasoningSummary !== null || round.assistantText.length >= 0,
+    ).toBe(true);
 
     // No secret in any normalized field.
     const serialized = JSON.stringify(round);

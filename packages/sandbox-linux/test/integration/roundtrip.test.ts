@@ -11,7 +11,14 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BubblewrapBackend, DisabledBackend } from '../../src/backend.ts';
-import { SANDBOX_WORKSPACE, makeWorkspace, specFor, NODE, SH, type Workspace } from '../security/helpers.ts';
+import {
+  SANDBOX_WORKSPACE,
+  makeWorkspace,
+  specFor,
+  NODE,
+  SH,
+  type Workspace,
+} from '../security/helpers.ts';
 
 const backend = new BubblewrapBackend(() => Date.now());
 let ws: Workspace;
