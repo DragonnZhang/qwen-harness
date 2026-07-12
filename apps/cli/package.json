@@ -20,11 +20,13 @@
     "@qwen-harness/runtime": "workspace:*",
     "@qwen-harness/config": "workspace:*",
     "@qwen-harness/storage": "workspace:*",
-    "@qwen-harness/telemetry": "workspace:*",
     "@qwen-harness/provider-dashscope": "workspace:*",
     "@qwen-harness/tools-builtin": "workspace:*",
-    "@qwen-harness/sandbox-linux": "workspace:*",
-    "@qwen-harness/tui-kit": "workspace:*"
+    "@qwen-harness/tools-core": "workspace:*",
+    "@qwen-harness/tool-worker": "workspace:*",
+    "@qwen-harness/policy": "workspace:*",
+    "@qwen-harness/provider-core": "workspace:*",
+    "@qwen-harness/sandbox-linux": "workspace:*"
   },
   "bin": {
     "qwen-harness": "./dist/bin.js"

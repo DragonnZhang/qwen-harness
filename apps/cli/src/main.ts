@@ -1,0 +1,199 @@
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+import { resolveProfile, type CorrelationId, type ThreadId } from '@qwen-harness/protocol';
+import { EventStore } from '@qwen-harness/storage';
+
+import { runDoctor } from './doctor.ts';
+import { createHarnessRuntime } from './wiring.ts';
+
+/**
+ * The CLI argument surface. Kept tiny and explicit; a real getopts layer is a checkpoint-09 polish
+ * item. Stable exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked/credential.
+ */
+export interface CliDeps {
+  readonly argv: readonly string[];
+  readonly env: Record<string, string | undefined>;
+  readonly cwd: string;
+  readonly stdout: (line: string) => void;
+  readonly stderr: (line: string) => void;
+  readonly now: () => number;
+}
+
+let idCounter = 0;
+const realIds = {
+  next(prefix: string): string {
+    // Monotonic, collision-resistant enough for a single-process CLI run. The daemon uses a
+    // durable high-water source; this is the headless one-shot equivalent.
+    idCounter += 1;
+    return `${prefix}_${Date.now().toString(36)}${idCounter.toString(36).padStart(4, '0')}`;
+  },
+};
+
+export async function main(deps: CliDeps): Promise<number> {
+  const [command, ...rest] = deps.argv;
+
+  if (command === undefined || command === 'help' || command === '--help') {
+    deps.stdout('qwen-harness <command>');
+    deps.stdout('');
+    deps.stdout(
+      '  doctor                 report environment, config provenance, sandbox, credential presence',
+    );
+    deps.stdout(
+      '  run <prompt>           run one turn in the current workspace and print the result',
+    );
+    deps.stdout('');
+    deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
+    return 0;
+  }
+
+  if (command === 'doctor') {
+    const report = runDoctor({ projectRoot: deps.cwd, env: deps.env });
+    for (const line of report.lines) deps.stdout(line);
+    return report.healthy ? 0 : 3;
+  }
+
+  if (command === 'run') {
+    return runCommand(deps, rest);
+  }
+
+  deps.stderr(`unknown command: ${command}`);
+  return 1;
+}
+
+async function runCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
+  const { flags, positional } = parseFlags(args);
+  const prompt = positional.join(' ').trim();
+  if (prompt.length === 0) {
+    deps.stderr('run: a prompt is required (e.g. `qwen-harness run "fix the failing test"`)');
+    return 1;
+  }
+
+  const profileInput = flags['profile'] ?? 'ask';
+  const profile = resolveProfile(profileInput);
+  if (profile === undefined) {
+    deps.stderr(`run: unknown profile "${profileInput}"`);
+    return 1;
+  }
+  const model = flags['model'] ?? 'qwen3.7-max';
+  const asJson = 'json' in flags;
+
+  // State lives under the workspace so a run is self-contained and inspectable.
+  const stateDir = join(deps.cwd, '.qwen-harness');
+  mkdirSync(stateDir, { recursive: true });
+  const store = new EventStore({
+    path: join(stateDir, 'sessions.sqlite'),
+    clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
+    ids: realIds,
+    secrets: [deps.env['DASHSCOPE_API_KEY']],
+  });
+
+  const threadId = realIds.next('thr') as ThreadId;
+  const correlationId = realIds.next('cor') as CorrelationId;
+
+  store.append({
+    threadId,
+    correlationId,
+    permissionProfile: profile,
+    actor: { kind: 'user', id: 'act_user01' as never },
+    payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
+  });
+
+  try {
+    const runtime = createHarnessRuntime({
+      workspaceRoot: deps.cwd,
+      profile: profile,
+      model,
+      instructions:
+        'You are a coding assistant working inside a sandboxed workspace. Use the available tools to inspect and edit files and run commands. Be concise.',
+      homeDir: homedir(),
+      clock: { now: deps.now },
+      ids: realIds,
+      store,
+    });
+
+    const result = await runtime.runTurn({ threadId, correlationId, userText: prompt });
+
+    // On a non-clean end, surface the underlying failure the engine recorded, so the user (and the
+    // logs) see WHY, not just "failed".
+    const detail =
+      result.state === 'completed'
+        ? null
+        : (store
+            .readThread(threadId)
+            .map((e) => e.payload)
+            .filter(
+              (p): p is Extract<typeof p, { type: 'model-request-failed' }> =>
+                p.type === 'model-request-failed',
+            )
+            .at(-1)?.message ?? null);
+
+    if (asJson) {
+      deps.stdout(
+        JSON.stringify({
+          threadId,
+          state: result.state,
+          reason: result.reason,
+          finalText: result.finalText,
+          detail,
+        }),
+      );
+    } else {
+      deps.stdout(result.finalText || '(no text output)');
+      deps.stderr(`\n[${result.state}: ${result.reason ?? 'done'}]  session ${threadId}`);
+      if (detail) deps.stderr(`detail: ${detail}`);
+    }
+    return result.state === 'completed' ? 0 : 2;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    // A missing credential is a distinct, actionable exit code.
+    if (/DASHSCOPE_API_KEY|credential|api key/i.test(message)) {
+      deps.stderr(`run: ${message}`);
+      return 3;
+    }
+    deps.stderr(`run failed: ${message}`);
+    return 2;
+  } finally {
+    store.close();
+  }
+}
+
+/** Flags that never take a value. Everything else consumes the following token. */
+const BOOLEAN_FLAGS = new Set(['json', 'quiet', 'no-color']);
+
+function parseFlags(args: readonly string[]): {
+  flags: Record<string, string>;
+  positional: string[];
+} {
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg.startsWith('--')) {
+      const eq = arg.indexOf('=');
+      if (eq !== -1) {
+        // `--key=value` form is unambiguous.
+        flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+        continue;
+      }
+      const key = arg.slice(2);
+      // A boolean flag must NOT swallow the next token — that is how `run --json "prompt"` used to
+      // lose its prompt. Only a value flag consumes what follows.
+      if (BOOLEAN_FLAGS.has(key)) {
+        flags[key] = 'true';
+        continue;
+      }
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        flags[key] = next;
+        i++;
+      } else {
+        flags[key] = 'true';
+      }
+    } else {
+      positional.push(arg);
+    }
+  }
+  return { flags, positional };
+}

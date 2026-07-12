@@ -44,9 +44,15 @@ importers:
       '@qwen-harness/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@qwen-harness/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@qwen-harness/provider-core':
+        specifier: workspace:*
+        version: link:../../packages/provider-core
       '@qwen-harness/provider-dashscope':
         specifier: workspace:*
         version: link:../../packages/provider-dashscope
@@ -59,15 +65,15 @@ importers:
       '@qwen-harness/storage':
         specifier: workspace:*
         version: link:../../packages/storage
-      '@qwen-harness/telemetry':
+      '@qwen-harness/tool-worker':
         specifier: workspace:*
-        version: link:../../packages/telemetry
+        version: link:../../packages/tool-worker
       '@qwen-harness/tools-builtin':
         specifier: workspace:*
         version: link:../../packages/tools-builtin
-      '@qwen-harness/tui-kit':
+      '@qwen-harness/tools-core':
         specifier: workspace:*
-        version: link:../../packages/tui-kit
+        version: link:../../packages/tools-core
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*

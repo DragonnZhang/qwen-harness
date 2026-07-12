@@ -21,19 +21,25 @@
       "path": "../../packages/storage"
     },
     {
-      "path": "../../packages/telemetry"
-    },
-    {
       "path": "../../packages/provider-dashscope"
     },
     {
       "path": "../../packages/tools-builtin"
     },
     {
-      "path": "../../packages/sandbox-linux"
+      "path": "../../packages/tools-core"
     },
     {
-      "path": "../../packages/tui-kit"
+      "path": "../../packages/tool-worker"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/provider-core"
+    },
+    {
+      "path": "../../packages/sandbox-linux"
     }
   ]
 }

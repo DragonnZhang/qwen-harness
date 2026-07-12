@@ -6,7 +6,6 @@ import {
   type PolicyContext,
   type PolicyEngine,
 } from '@qwen-harness/policy';
-import type { ToolCallId } from '@qwen-harness/protocol';
 import { validateCall, type ToolRegistry } from '@qwen-harness/tools-core';
 import type { ToolWorkerClient, WorkerGrant, WorkerResponse } from '@qwen-harness/tool-worker';
 
@@ -35,7 +34,7 @@ export interface PipelineOptions {
 }
 
 export interface ExecuteInput {
-  readonly callId: ToolCallId;
+  readonly callId: string;
   readonly toolName: string;
   readonly rawArguments: unknown;
   readonly policyContext: PolicyContext;

@@ -351,6 +351,17 @@ export const gitDiffTool: BuiltinTool<GitDiffInput> = {
   }),
 };
 
+/**
+ * The JSON-Schema parameter object for a tool, as the model needs to see it. Derived from the same
+ * zod `inputSchema` that validates the call, so what the model is told and what we enforce cannot
+ * drift. `additionalProperties:false` is dropped because some providers reject it on function args.
+ */
+export function toolParametersJsonSchema(tool: BuiltinTool): Record<string, unknown> {
+  const schema = z.toJSONSchema(tool.inputSchema, { target: 'draft-7' }) as Record<string, unknown>;
+  delete schema['$schema'];
+  return schema;
+}
+
 /** Every built-in, in a stable order. */
 export const BUILTIN_TOOLS: readonly BuiltinTool[] = [
   readTool,
