@@ -19,7 +19,7 @@
     "test:security": "vitest run --project security",
     "test:pty": "vitest run --project pty",
     "test:e2e": "vitest run --project e2e",
-    "test:live": "vitest run --project live",
+    "test:live": "bash scripts/test-live.sh",
     "test:performance": "vitest run --project performance",
     "test:migrations": "vitest run --project migrations",
     "architecture": "tsx scripts/architecture.ts",
