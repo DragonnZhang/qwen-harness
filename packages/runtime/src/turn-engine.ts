@@ -79,6 +79,20 @@ export interface ToolExecutor {
   };
 }
 
+/**
+ * The turn engine's view of the hook engine — the minimum it needs, so runtime stays decoupled from
+ * the hooks PACKAGE. An app adapts the real `HookEngine` to this. A `preToolUse` that returns
+ * `block` prevents the tool from executing; a hook can never turn a block into an allow (that
+ * invariant lives in the hook engine itself, HK-04).
+ */
+export interface TurnHooks {
+  preToolUse(call: {
+    toolName: string;
+    arguments: Readonly<Record<string, unknown>>;
+  }): Promise<{ blocked: boolean; reason: string | null }>;
+  postToolUse(call: { toolName: string; ok: boolean }): Promise<void>;
+}
+
 export interface TurnEngineDeps {
   readonly provider: ModelProvider;
   readonly tools: ToolExecutor;
@@ -86,6 +100,8 @@ export interface TurnEngineDeps {
   readonly ids: IdSource;
   readonly clock: { now(): number };
   readonly budget?: BudgetLimits;
+  /** Optional. When present, PreToolUse gates each tool and PostToolUse fires after. */
+  readonly hooks?: TurnHooks;
 }
 
 export interface RunTurnInput {
@@ -286,6 +302,35 @@ export class TurnEngine {
       const repeat = budget.observeToolCall(call.toolName, call.argumentsJson);
       if (repeat.stop) return { stop: true, terminal: 'budget-exhausted', reason: repeat.reason };
 
+      // PreToolUse hooks (HK owns the event; the tool domain fires it here). A block prevents the
+      // tool from running AND from recording a side-effect intent — nothing happened, so nothing is
+      // persisted as intent. A hook can only block, never elevate (enforced inside the hook engine).
+      if (this.#deps.hooks) {
+        const gate = await this.#deps.hooks.preToolUse({
+          toolName: call.toolName,
+          arguments: call.arguments,
+        });
+        sink.append({
+          ...base,
+          payload: {
+            type: 'hook-fired',
+            event: 'PreToolUse',
+            handler: call.toolName,
+            outcome: gate.blocked ? 'block' : 'continue',
+            durationMs: 0,
+          },
+        });
+        if (gate.blocked) {
+          conversation.push({
+            type: 'function-output',
+            callId: call.callId,
+            name: call.toolName,
+            output: `(blocked by a PreToolUse hook${gate.reason ? `: ${gate.reason}` : ''})`,
+          });
+          continue;
+        }
+      }
+
       const intent = tools.intentFor({ toolName: call.toolName, arguments: call.arguments });
 
       // Persist INTENT before executing. If we crash after this, recovery sees an in-flight action.
@@ -348,6 +393,22 @@ export class TurnEngine {
           resultDigest: result.resultDigest,
         },
       });
+
+      // PostToolUse fires after the result is durable, so a post hook can never corrupt the
+      // completed tool result — it only observes it and may influence the NEXT step (HK-05).
+      if (this.#deps.hooks) {
+        await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        sink.append({
+          ...base,
+          payload: {
+            type: 'hook-fired',
+            event: result.ok ? 'PostToolUse' : 'PostToolUseFailure',
+            handler: call.toolName,
+            outcome: 'continue',
+            durationMs: 0,
+          },
+        });
+      }
 
       const itemId = this.#deps.ids.next('itm') as ItemId;
       sink.append({

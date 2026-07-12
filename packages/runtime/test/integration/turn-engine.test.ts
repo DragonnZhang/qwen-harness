@@ -215,3 +215,147 @@ describe('TurnEngine persisted loop', () => {
     expect(result.terminationReason).toBe('repeated-identical-calls');
   });
 });
+
+describe('TurnEngine PreToolUse hook gating (HK-04/HK-05)', () => {
+  let store2: EventStore;
+  let clock2: ManualClock;
+  let ids2: SequentialIds;
+
+  beforeEach(() => {
+    clock2 = new ManualClock(1_700_000_000_000);
+    ids2 = new SequentialIds();
+    store2 = new EventStore({ path: ':memory:', clock: clock2, ids: ids2 });
+    store2.append({
+      threadId: THREAD,
+      correlationId: CORR,
+      permissionProfile: 'ask',
+      actor: USER_ACTOR,
+      payload: { type: 'thread-created', cwd: '/w', canonicalRepo: null, name: null },
+    });
+  });
+
+  const sink2 = (): EventSink => ({
+    append: (input) =>
+      store2.append({ ...input, causationId: (input.causationId ?? null) as never }),
+    mayExecute: (key) => store2.mayExecute(key),
+  });
+
+  it('a blocking PreToolUse hook prevents the tool from executing AND from recording intent', async () => {
+    const provider = scriptedProvider([
+      [
+        {
+          type: 'tool-call-complete',
+          itemId: 't',
+          callId: 'call_blocked00001',
+          toolName: 'write_file',
+          argumentsJson: '{"path":"a.ts"}',
+          arguments: { path: 'a.ts' },
+        },
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text-done', itemId: 'm', text: 'ok, I will not write.' },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ]);
+    const exec = recordingExecutor();
+
+    const engine = new TurnEngine({
+      provider,
+      tools: exec,
+      sink: sink2(),
+      ids: ids2,
+      clock: clock2,
+      hooks: {
+        // Block every write.
+        preToolUse: (call) =>
+          Promise.resolve({
+            blocked: call.toolName === 'write_file',
+            reason: 'writes are blocked in this test',
+          }),
+        postToolUse: () => Promise.resolve(),
+      },
+    });
+
+    const result = await engine.run({
+      threadId: THREAD,
+      correlationId: CORR,
+      permissionProfile: 'ask',
+      model: 'fake',
+      instructions: '',
+      history: [],
+      userText: 'write a.ts',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    expect(result.state).toBe('completed');
+    // The tool executor was NEVER called — the hook blocked it.
+    expect(exec.calls).toEqual([]);
+
+    const events = store2.readThread(THREAD).map((e) => e.payload);
+    // A hook-fired(PreToolUse, block) is recorded...
+    const hookFired = events.filter((p) => p.type === 'hook-fired');
+    expect(
+      hookFired.some(
+        (p) => p.type === 'hook-fired' && p.event === 'PreToolUse' && p.outcome === 'block',
+      ),
+    ).toBe(true);
+    // ...and NO side-effect intent was persisted, because nothing happened.
+    expect(events.some((p) => p.type === 'side-effect-intent')).toBe(false);
+  });
+
+  it('PostToolUse fires after an allowed tool, and the tool ran', async () => {
+    const provider = scriptedProvider([
+      [
+        {
+          type: 'tool-call-complete',
+          itemId: 't',
+          callId: 'call_allowed00001',
+          toolName: 'read_file',
+          argumentsJson: '{"path":"a.ts"}',
+          arguments: { path: 'a.ts' },
+        },
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text-done', itemId: 'm', text: 'done' },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ]);
+    const exec = recordingExecutor();
+    let postCalls = 0;
+
+    const engine = new TurnEngine({
+      provider,
+      tools: exec,
+      sink: sink2(),
+      ids: ids2,
+      clock: clock2,
+      hooks: {
+        preToolUse: () => Promise.resolve({ blocked: false, reason: null }),
+        postToolUse: () => {
+          postCalls++;
+          return Promise.resolve();
+        },
+      },
+    });
+
+    await engine.run({
+      threadId: THREAD,
+      correlationId: CORR,
+      permissionProfile: 'ask',
+      model: 'fake',
+      instructions: '',
+      history: [],
+      userText: 'read a.ts',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    expect(exec.calls).toEqual(['read_file']);
+    expect(postCalls).toBe(1);
+    const events = store2.readThread(THREAD).map((e) => e.payload);
+    expect(events.some((p) => p.type === 'hook-fired' && p.event === 'PostToolUse')).toBe(true);
+  });
+});

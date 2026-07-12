@@ -27,4 +27,5 @@ export type {
   EventSink,
   ToolExecutor,
   ToolExecutionResult,
+  TurnHooks,
 } from './turn-engine.ts';
