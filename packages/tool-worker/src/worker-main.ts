@@ -10,6 +10,7 @@
  * re-canonicalized here rather than being taken on the runtime's word. The runtime is not the
  * adversary, but a confused-deputy bug in the runtime should not become a sandbox escape.
  */
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 import { handleRequest, WorkerFailure, type HandleRoots } from './handlers.ts';
@@ -31,8 +32,58 @@ function rootsFromEnv(): HandleRoots {
   return { workspace, scratch };
 }
 
+/**
+ * Handle one already-parsed request frame and write its response. Shared by both modes.
+ */
+async function handleFrame(roots: HandleRoots, frame: WorkerFrame): Promise<void> {
+  if (frame.body.kind !== 'request') return;
+  const { grant, request } = frame.body;
+  const controller = new AbortController();
+  // Every operation is time-bounded. A tool that hangs is cancelled, never left to hang the turn.
+  const timer = setTimeout(() => controller.abort(), grant.limits.wallMs);
+  try {
+    const result = await handleRequest({ roots, grant, signal: controller.signal }, request);
+    respond(frame.id, { ok: true, result });
+  } catch (e) {
+    if (e instanceof WorkerFailure) {
+      respond(frame.id, { ok: false, error: e.detail });
+    } else {
+      // An unexpected throw is still a typed failure to the caller — never a silent hang and
+      // never a raw stack trace, which could contain host paths.
+      respond(frame.id, {
+        ok: false,
+        error: { category: 'internal', message: e instanceof Error ? e.message : String(e) },
+      });
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function main(): Promise<void> {
   const roots = rootsFromEnv();
+
+  // One-shot mode: the request frame is a file in the bound scratch directory. This is how the
+  // client runs a FRESH sandboxed worker per tool call — the strongest isolation, since no state
+  // survives between calls. A file (not an env var or argv) carries the frame because a write's
+  // content can exceed ARG_MAX.
+  const requestFile = process.env['QH_REQUEST_FILE'];
+  if (requestFile !== undefined) {
+    let frame: WorkerFrame;
+    try {
+      frame = WorkerFrameSchema.parse(JSON.parse(readFileSync(requestFile, 'utf8')));
+    } catch (e) {
+      respond('unknown', {
+        ok: false,
+        error: { category: 'invalid-input', message: `unparseable request file: ${String(e)}` },
+      });
+      return;
+    }
+    await handleFrame(roots, frame);
+    return;
+  }
+
+  // Persistent mode: newline-delimited frames over stdin. Kept for a future long-lived worker.
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
   for await (const line of rl) {
@@ -50,30 +101,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    if (frame.body.kind !== 'request') continue;
-
-    const { grant, request } = frame.body;
-    const controller = new AbortController();
-    // Every operation is time-bounded. A tool that hangs is cancelled, never left to hang the turn.
-    const timer = setTimeout(() => controller.abort(), grant.limits.wallMs);
-
-    try {
-      const result = await handleRequest({ roots, grant, signal: controller.signal }, request);
-      respond(frame.id, { ok: true, result });
-    } catch (e) {
-      if (e instanceof WorkerFailure) {
-        respond(frame.id, { ok: false, error: e.detail });
-      } else {
-        // An unexpected throw is still a typed failure to the caller — never a silent hang and
-        // never a raw stack trace, which could contain host paths.
-        respond(frame.id, {
-          ok: false,
-          error: { category: 'internal', message: e instanceof Error ? e.message : String(e) },
-        });
-      }
-    } finally {
-      clearTimeout(timer);
-    }
+    await handleFrame(roots, frame);
   }
 }
 

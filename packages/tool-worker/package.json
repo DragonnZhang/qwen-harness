@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build && esbuild src/worker-entry.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/worker.bundle.mjs --log-level=warning",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@qwen-harness/testkit": "workspace:*"
+    "@qwen-harness/testkit": "workspace:*",
+    "esbuild": "0.25.10"
   }
 }

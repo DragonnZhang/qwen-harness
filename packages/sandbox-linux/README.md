@@ -16,9 +16,9 @@ them and failing.
 
 ## What is proven, on this host, by real execution
 
-`test/security/real-sandbox.test.ts` runs the actual sandbox and attempts actual escapes. A
-sandbox test that mocks the sandbox proves nothing — whether the kernel confines the process is the
-entire question, and only a real process answers it.
+The `test/security/**` suite (`filesystem`, `network`, `environment`, `process-resources`) runs the
+actual sandbox and attempts actual escapes. A sandbox test that mocks the sandbox proves nothing —
+whether the kernel confines the process is the entire question, and only a real process answers it.
 
 - Cannot see `/root`; cannot read a secret file outside the workspace; cannot read `~/.ssh`.
 - `workspace-write` can write inside the workspace but not outside it.

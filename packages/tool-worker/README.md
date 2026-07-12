@@ -54,3 +54,23 @@ Every `git` invocation passes `-c core.hooksPath=/dev/null` and neutralizes glob
 A repository's Git hooks are attacker-controlled content — a malicious repo can ship a
 `.git/hooks/post-checkout` and wait for a tool to trigger it. `git status` must never execute code
 the repository chose.
+
+## The client, and how a tool call actually runs
+
+`ToolWorkerClient` lives in the runtime process but performs no tool I/O itself. For each request
+it spawns a **fresh bubblewrap-sandboxed worker** — one process per tool call. No state survives
+between calls, so a compromise in one execution cannot bleed into the next.
+
+The worker ships as a **single self-contained bundle** (`dist/worker.bundle.mjs`, zod inlined). It
+has to be: inside the sandbox there is no `node_modules` to import from, so a multi-file worker with
+external dependencies could not run. The client binds exactly that one file, read-only, and nothing
+else beyond the workspace, the private scratch dir, and the read-only OS under `/usr`.
+
+The request frame is written to the scratch dir (a file, not argv/env — a write's content can
+exceed `ARG_MAX`) and the worker reads it from the sandbox-internal path `/qh/scratch/request.json`.
+The response comes back on stdout as one typed frame.
+
+`test/integration/sandboxed-tools.test.ts` runs the whole path against the real sandbox: read with
+pagination, write that lands on the host, edit with stale-file rejection, shell with separated
+stdout/stderr, a read-only grant refusing a write, and a `../../../etc/passwd` escape refused — all
+through a real bwrap process, not a mock.

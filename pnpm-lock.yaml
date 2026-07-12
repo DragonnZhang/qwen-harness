@@ -552,6 +552,9 @@ importers:
       '@qwen-harness/testkit':
         specifier: workspace:*
         version: link:../testkit
+      esbuild:
+        specifier: 0.25.10
+        version: 0.25.10
 
   packages/tools-builtin:
     dependencies:

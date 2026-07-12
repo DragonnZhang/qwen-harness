@@ -25,3 +25,6 @@ export {
   WorkerFailure,
 } from './handlers.ts';
 export type { HandleRoots, HandlerContext } from './handlers.ts';
+
+export { ToolWorkerClient } from './client.ts';
+export type { ToolWorkerClientOptions, RunToolOptions } from './client.ts';
