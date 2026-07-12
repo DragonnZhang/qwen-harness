@@ -21,8 +21,15 @@ Snapshot: 2026-07-12
 | 09 product completeness and release hardening | not started |
 | 10 final integrated and live acceptance | not started |
 
-Live evidence lane: **`LIVE_AVAILABLE`** — `DASHSCOPE_API_KEY` present; Responses/Chat/error
-contracts confirmed against the real service at checkpoint 00 and captured as fixtures.
+Live evidence lane: **`LIVE_VERIFIED` (provider path)** — the real `provider-dashscope` adapter was
+driven against `qwen3.7-max` via `pnpm test:live` (`evals/live/provider-smoke.test.ts`): streamed a
+tool call with the exact `call_` ID and parsed args, normalized usage with reasoning tokens,
+captured a request ID, leaked no secret. `test:live` fails closed (exit 1) without the key. The FULL
+checkpoint-10 live suite (recovery, edit+test+diff, subagent/team/MCP/compaction smokes) is still
+required for final completion.
+
+**Checkpoints 00, 01, 02 are COMPLETE and committed.** 696 deterministic + 2 live tests pass.
+Latest commit: `174dbbd`. Next: checkpoint 03.
 
 ## Settled — do not re-litigate
 
