@@ -479,26 +479,41 @@ const results: RuleResult[] = [];
 }
 
 // --- Rule 6: DASHSCOPE_API_KEY isolation ------------------------------------------------------
+//
+// The threat-model invariant is precise: only the provider boundary may READ the credential VALUE,
+// and "lint/architecture tests reject other `process.env` access to it". So the rule forbids
+// reading it from the environment — `process.env.DASHSCOPE_API_KEY` and its bracket/destructure
+// forms — anywhere but the owners. It deliberately does NOT forbid merely NAMING the string: config
+// legitimately documents that `apiKeyEnv` holds the NAME `DASHSCOPE_API_KEY` (never the value), and
+// a doc comment or error message may use it as an example. Naming the env var is not reading it.
 {
   const failures: Finding[] = [];
+  // Any read of the key out of the environment, in the forms a program actually uses.
+  const ENV_READ_PATTERNS: RegExp[] = [
+    /process\.env\s*\.\s*DASHSCOPE_API_KEY\b/,
+    /process\.env\s*\[\s*['"`]DASHSCOPE_API_KEY['"`]\s*\]/,
+    // destructuring: const { DASHSCOPE_API_KEY } = process.env
+    /\{[^}]*\bDASHSCOPE_API_KEY\b[^}]*\}\s*=\s*process\.env/,
+  ];
   for (const unit of units) {
     if (unit.kind === 'packages' && CREDENTIAL_OWNERS.has(unit.name)) continue;
     for (const file of unit.files) {
       const source = sources.get(file) ?? '';
-      let from = source.indexOf(CREDENTIAL_NAME);
-      while (from !== -1) {
-        failures.push({
-          file: rel(file),
-          line: lineOf(source, from),
-          message: `${unit.kind}/${unit.name} names ${CREDENTIAL_NAME}; only ${[...CREDENTIAL_OWNERS].join(' and ')} may reference it (threat model: the credential has exactly one reader)`,
-        });
-        from = source.indexOf(CREDENTIAL_NAME, from + CREDENTIAL_NAME.length);
+      for (const pattern of ENV_READ_PATTERNS) {
+        const m = pattern.exec(source);
+        if (m) {
+          failures.push({
+            file: rel(file),
+            line: lineOf(source, m.index),
+            message: `${unit.kind}/${unit.name} READS ${CREDENTIAL_NAME} from the environment; only ${[...CREDENTIAL_OWNERS].join(' and ')} may read the credential value (threat model: exactly one reader). Naming the env var is fine; reading its value here is not.`,
+          });
+        }
       }
     }
   }
   results.push({
     id: '6',
-    title: `${CREDENTIAL_NAME} is named only by provider-dashscope and secret-store`,
+    title: `${CREDENTIAL_NAME} value is read only by provider-dashscope and secret-store`,
     failures,
     warnings: [],
   });
