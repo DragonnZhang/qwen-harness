@@ -23,6 +23,7 @@
     "node-pty": "1.1.0",
     "react": "19.2.7",
     "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/provider-core": "workspace:*",
     "@qwen-harness/runtime": "workspace:*",
     "@qwen-harness/config": "workspace:*",
     "@qwen-harness/tui-kit": "workspace:*",

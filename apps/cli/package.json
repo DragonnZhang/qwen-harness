@@ -40,7 +40,9 @@
     "@qwen-harness/scheduler": "workspace:*",
     "@qwen-harness/teams": "workspace:*",
     "@qwen-harness/agents": "workspace:*",
-    "@qwen-harness/worktrees": "workspace:*"
+    "@qwen-harness/worktrees": "workspace:*",
+    "@qwen-harness/network": "workspace:*",
+    "@qwen-harness/secret-store": "workspace:*"
   },
   "bin": {
     "qwen-harness": "./dist/bin.js"

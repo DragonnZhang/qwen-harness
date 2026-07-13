@@ -11,5 +11,12 @@
  * a fetched page is hostile input, not trusted content.
  */
 
-export { NetworkBroker, NetworkError, DEFAULT_NETWORK_POLICY } from './broker.ts';
-export type { NetworkPolicy, FetchImpl, FetchResponse, FetchResult } from './broker.ts';
+export { NetworkBroker, NetworkError, DEFAULT_NETWORK_POLICY, nodeFetchImpl } from './broker.ts';
+export type {
+  NetworkPolicy,
+  FetchImpl,
+  FetchResponse,
+  FetchResult,
+  OutboundRequest,
+  RawEgressResponse,
+} from './broker.ts';

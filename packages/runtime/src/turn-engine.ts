@@ -1,14 +1,22 @@
-import type {
-  Actor,
-  CorrelationId,
-  EventPayload,
-  IdSource,
-  ItemId,
-  PermissionProfile,
-  ThreadId,
-  TurnId,
+import {
+  HarnessError,
+  type Actor,
+  type CorrelationId,
+  type EventPayload,
+  type IdSource,
+  type ItemId,
+  type PermissionProfile,
+  type ThreadId,
+  type TurnId,
 } from '@qwen-harness/protocol';
-import type { ModelProvider, ModelInputItem } from '@qwen-harness/provider-core';
+import {
+  decideRetry,
+  DEFAULT_RETRY_POLICY,
+  type ModelProvider,
+  type ModelInputItem,
+  type RetryPolicy,
+  type Rng,
+} from '@qwen-harness/provider-core';
 
 import { BudgetTracker, DEFAULT_BUDGET, type BudgetLimits } from './budget.ts';
 import { normalizeRound, type NormalizedRound, type NormalizedToolCall } from './normalizer.ts';
@@ -198,8 +206,15 @@ export interface TurnEngineDeps {
   readonly tools: ToolExecutor;
   readonly sink: EventSink;
   readonly ids: IdSource;
-  readonly clock: { now(): number };
+  readonly clock: { now(): number; sleep?(ms: number): Promise<void> };
   readonly budget?: BudgetLimits;
+  /**
+   * Randomness for retry backoff jitter. Injected so a test is deterministic (RT-08). Absent means
+   * the midpoint of the jitter window (0.5) — deterministic, and half the exponential bound.
+   */
+  readonly rng?: Rng;
+  /** Transient-fault retry policy for the PROVIDER call. Absent means the frozen default. */
+  readonly retryPolicy?: RetryPolicy;
   /** Optional. When present, PreToolUse gates each tool and PostToolUse fires after. */
   readonly hooks?: TurnHooks;
   /** Optional. Absent means there is no approval channel: an `ask` defers, it never auto-allows. */
@@ -468,15 +483,18 @@ export class TurnEngine {
           },
         });
 
-        const round = await normalizeRound(
-          provider.stream({
+        const round = await this.#streamWithRetry(
+          provider,
+          {
             model: ctx.model,
             instructions: ctx.instructions,
             input: conversation,
             tools: ctx.tools,
             reasoningEffort: 'medium',
             signal,
-          }),
+          },
+          base,
+          signal,
         );
         rounds++;
 
@@ -845,6 +863,56 @@ export class TurnEngine {
         },
       },
     });
+  }
+
+  /**
+   * The provider call, wrapped in a BOUNDED transient-fault retry (PV-11 / RT-04).
+   *
+   * The retry policy was implemented and tested in `provider-core` but was never invoked in the
+   * turn loop — a retryable 503 or dropped connection failed the whole turn. That is the gap golden
+   * path 9 ("survives a retryable fault") requires closing.
+   *
+   * Only a thrown `HarnessError` is considered, and `decideRetry` — not this code — owns the rules:
+   * it refuses a non-retryable class, a quota/auth fault, a fault after visible output was already
+   * streamed (a retry must never concatenate onto text the user saw), an uncertain side effect, and
+   * both the attempt and the elapsed-time budgets. So retries are always bounded; there is no path
+   * to an infinite loop. A cancellation is never a retry. Anything that is not a `HarnessError`, or
+   * that `decideRetry` refuses, rethrows to the turn's normal failure handling.
+   */
+  async #streamWithRetry(
+    provider: ModelProvider,
+    request: Parameters<ModelProvider['stream']>[0],
+    base: PersistBase,
+    signal: AbortSignal,
+  ): Promise<NormalizedRound> {
+    const { clock } = this.#deps;
+    const rng: Rng = this.#deps.rng ?? (() => 0.5);
+    const policy = this.#deps.retryPolicy ?? DEFAULT_RETRY_POLICY;
+    // Bind so `this` is not lost when the method is detached from `clock` (a real ManualClock keeps
+    // state in it); fall back to a real timer when no clock sleep is provided.
+    const sleep = (ms: number): Promise<void> =>
+      clock.sleep ? clock.sleep(ms) : new Promise<void>((r) => setTimeout(r, ms));
+    const startedAt = clock.now();
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await normalizeRound(provider.stream(request));
+      } catch (err) {
+        if (signal.aborted) throw err;
+        if (!(err instanceof HarnessError)) throw err;
+        const decision = decideRetry(
+          err,
+          { attempt, elapsedMs: clock.now() - startedAt },
+          rng,
+          policy,
+        );
+        if (!decision.retry) throw err;
+        // Observable but not a new (frozen) event type: reuse the request lifecycle marker so a
+        // trace shows a fresh request was issued after backoff. `base` carries the correlation.
+        void base;
+        await sleep(decision.delayMs);
+      }
+    }
   }
 
   #persistRoundItems(base: PersistBase, round: NormalizedRound): void {

@@ -74,6 +74,9 @@ importers:
       '@qwen-harness/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@qwen-harness/network':
+        specifier: workspace:*
+        version: link:../../packages/network
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../../packages/policy
@@ -95,6 +98,9 @@ importers:
       '@qwen-harness/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
+      '@qwen-harness/secret-store':
+        specifier: workspace:*
+        version: link:../../packages/secret-store
       '@qwen-harness/skills':
         specifier: workspace:*
         version: link:../../packages/skills
@@ -209,6 +215,9 @@ importers:
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@qwen-harness/provider-core':
+        specifier: workspace:*
+        version: link:../../packages/provider-core
       '@qwen-harness/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

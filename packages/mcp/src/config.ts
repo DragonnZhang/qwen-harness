@@ -45,7 +45,16 @@ export const TransportConfigSchema = z.discriminatedUnion('type', [
     env: z.record(z.string(), z.string()).optional(),
     autoRestart: z.boolean().optional(),
   }),
-  z.object({ type: z.literal('http'), url: z.string().url() }),
+  z.object({
+    type: z.literal('http'),
+    url: z.string().url(),
+    /** Separate GET endpoint for the server→client SSE stream. Defaults to `url`. */
+    sseUrl: z.string().url().optional(),
+    /** Static headers sent on every request (e.g. a pre-provisioned bearer token). */
+    headers: z.record(z.string(), z.string()).optional(),
+    /** Whether to open a standalone SSE stream for server-initiated messages. Default true. */
+    openServerStream: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('sse'), url: z.string().url() }),
   z.object({ type: z.literal('websocket'), url: z.string().url() }),
   z.object({ type: z.literal('ide-sse'), sseUrl: z.string().url(), postUrl: z.string().url() }),

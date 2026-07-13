@@ -51,13 +51,11 @@ export { StdioTransport } from './transports/stdio.ts';
 export type { StdioTransportOptions } from './transports/stdio.ts';
 export { HttpTransport } from './transports/http.ts';
 export type { HttpTransportOptions, ReconnectPolicy } from './transports/http.ts';
-export { brokeredGateway, assertUrlAllowed, SseParser } from './transports/http-gateway.ts';
+export { brokeredGateway, SseParser } from './transports/http-gateway.ts';
 export type {
   HttpGateway,
   HttpRequest,
   HttpResponse,
-  RawHttp,
-  RawHttpResponse,
   SseEvent,
   SseHandlers,
   SseConnection,

@@ -2,10 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import {
+  HttpTransport,
   McpClient,
   McpServerConfigSchema,
   NO_MANAGED_MCP,
+  OAuthClient,
   StdioTransport,
+  brokeredGateway,
   classifyAnnotations,
   connectAll,
   mcpActionFor,
@@ -13,12 +16,22 @@ import {
   mcpToolDefinition,
   invokeMcpTool,
   resolveMcpServers,
+  type HttpGateway,
   type McpConfigLayer,
   type McpConfigSource,
   type ManagedMcpPolicy,
   type McpTool,
+  type OAuthClientConfig,
   type ResolvedMcpServer,
+  type StoredToken,
 } from '@qwen-harness/mcp';
+import {
+  DEFAULT_NETWORK_POLICY,
+  NetworkBroker,
+  nodeFetchImpl,
+  type NetworkPolicy,
+} from '@qwen-harness/network';
+import { SecretStore, selectBackend, type SelectBackendOptions } from '@qwen-harness/secret-store';
 import type { PolicyContext, PolicyEngine } from '@qwen-harness/policy';
 import type { Clock, IdSource, ToolCallId } from '@qwen-harness/protocol';
 import type { ToolEvaluation, ToolExecutionResult, ToolExecutor } from '@qwen-harness/runtime';
@@ -48,14 +61,16 @@ import { riskOf, type McpSurface, type ModelTool } from './wiring.ts';
  * it identically to the built-in one. There is no privileged path because there is nowhere to put
  * one — the engine does not know or care which executor it is talking to.
  *
- * WHAT IS NOT WIRED: only `stdio` servers can be launched from a config file today. The package
- * implements Streamable HTTP, SSE, and `ide-sse` transports, but they need an `HttpGateway`, and the
- * gateway needs a POST-with-body egress primitive that `@qwen-harness/network`'s broker (a guarded
- * GET `fetch(url)`) does not expose. Rather than accept an `http` server in config and quietly fail
- * to connect it, the schema REJECTS it with a message that says exactly that.
+ * TRANSPORTS: `stdio` launches a child process here; `http` (Streamable HTTP + SSE) connects
+ * through the network broker. The broker now carries a guarded POST-with-body and streaming egress
+ * (`broker.send`), so `mcp`'s `HttpTransport` reaches an HTTP MCP server WITHOUT `mcp` opening a
+ * socket — every frame still crosses the SAME SSRF/host/scheme/redirect guard a web fetch does. An
+ * HTTP server on a loopback/metadata/private address is refused by that guard exactly as a fetch
+ * would be; a user who genuinely runs an HTTP MCP server on localhost must widen the network policy
+ * for it, which is the secure default (stdio remains the normal local transport).
  */
 
-/** Only the transport this app can actually launch. See the note above. */
+/** The transports this app can launch: a child process, or an HTTP/SSE endpoint via the broker. */
 const CliTransportSchema = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('stdio'),
@@ -63,6 +78,16 @@ const CliTransportSchema = z.discriminatedUnion('type', [
     args: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),
     autoRestart: z.boolean().optional(),
+  }),
+  z.strictObject({
+    type: z.literal('http'),
+    url: z.string().url(),
+    /** Separate GET endpoint for the server→client SSE stream. Defaults to `url`. */
+    sseUrl: z.string().url().optional(),
+    /** Static headers to send on every request (e.g. a pre-provisioned bearer token). */
+    headers: z.record(z.string(), z.string()).optional(),
+    /** Whether to open a standalone SSE stream for server-initiated messages. Default true. */
+    openServerStream: z.boolean().optional(),
   }),
 ]);
 
@@ -265,24 +290,74 @@ export async function connectMcp(opts: {
   policyContext: () => PolicyContext;
   builtinNames: ReadonlySet<string>;
   onStderr?: (server: string, line: string) => void;
+  /**
+   * The HTTP seam for `http` servers. Injected so a test can point it at a loopback fixture (with a
+   * policy that permits loopback) while production keeps the strict default. When omitted, a default
+   * gateway is built over the real Node `fetch` with `networkPolicy` (SSRF-strict by default).
+   */
+  gateway?: HttpGateway;
+  networkPolicy?: NetworkPolicy;
+  /**
+   * Per-server extra request headers, resolved at connect time — this is where an OAuth bearer token
+   * (acquired via `acquireMcpToken` and loaded from the secret store) is attached. Merged on top of
+   * the static `headers` in config.
+   */
+  authHeaderFor?: (server: string) => Record<string, string> | undefined;
 }): Promise<ConnectedMcp | null> {
   const active = opts.configuration.resolved.filter((s) => s.active);
   if (active.length === 0) return null;
 
+  // Build the HTTP gateway lazily, and only if an http server is actually configured — a stdio-only
+  // run must not open a network broker it never uses.
+  let gateway: HttpGateway | null = opts.gateway ?? null;
+  const httpGateway = (): HttpGateway => {
+    if (gateway === null) {
+      const broker = new NetworkBroker(
+        nodeFetchImpl(),
+        opts.networkPolicy ?? DEFAULT_NETWORK_POLICY,
+      );
+      gateway = brokeredGateway({ broker });
+    }
+    return gateway;
+  };
+
   const clients: McpClient[] = [];
   for (const server of active) {
     const transport = server.config.transport;
-    // Non-stdio transports never reach here: the CLI schema refuses them at load time.
-    if (transport.type !== 'stdio') continue;
+    // The CLI schema (`CliTransportSchema`) only admits stdio and http; the other package transport
+    // variants can never appear in a loaded config. Narrow to the two we launch.
+    let wire: StdioTransport | HttpTransport;
+    if (transport.type === 'stdio') {
+      wire = new StdioTransport({
+        command: transport.command,
+        ...(transport.args ? { args: transport.args } : {}),
+        ...(transport.env ? { env: transport.env } : {}),
+        onStderr: (line) => opts.onStderr?.(server.config.name, line),
+      });
+    } else if (transport.type === 'http') {
+      // Static config headers, then the OAuth bearer (if any) on top — the token is resolved at
+      // connect time from the secret store, never baked into the config file.
+      const headers = {
+        ...(transport.headers ?? {}),
+        ...(opts.authHeaderFor?.(server.config.name) ?? {}),
+      };
+      wire = new HttpTransport({
+        url: transport.url,
+        gateway: httpGateway(),
+        clock: opts.clock,
+        ...(transport.sseUrl ? { sseUrl: transport.sseUrl } : {}),
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        ...(transport.openServerStream !== undefined
+          ? { openServerStream: transport.openServerStream }
+          : {}),
+      });
+    } else {
+      continue;
+    }
     clients.push(
       new McpClient({
         server: server.config.name,
-        transport: new StdioTransport({
-          command: transport.command,
-          ...(transport.args ? { args: transport.args } : {}),
-          ...(transport.env ? { env: transport.env } : {}),
-          onStderr: (line) => opts.onStderr?.(server.config.name, line),
-        }),
+        transport: wire,
         clock: opts.clock,
         ids: opts.ids,
         // A discovered MCP tool can never shadow a built-in (MC-03). Passing the real built-in names
@@ -344,6 +419,58 @@ export async function connectMcp(opts: {
       await Promise.allSettled(clients.map((c) => c.disconnect()));
     },
   };
+}
+
+/**
+ * Select the secret store for MCP OAuth tokens (MC-07). It picks the strongest AVAILABLE backend —
+ * the OS keyring, else an encrypted 0600 file, else in-memory which REFUSES to persist rather than
+ * writing a token in the clear. A token is the same class of material as the model key, so it is
+ * never logged and never written unencrypted; this store is the only place it lives.
+ */
+export function mcpSecretStore(opts: SelectBackendOptions = {}): SecretStore {
+  return new SecretStore(selectBackend(opts));
+}
+
+/**
+ * Construct the `OAuthClient` for one server, bound to the HTTP gateway (so every token/discovery
+ * call crosses the broker's SSRF guard) and the secret store (so tokens are stored, never logged).
+ */
+export function createMcpOAuthClient(opts: {
+  config: OAuthClientConfig;
+  gateway: HttpGateway;
+  secretStore: SecretStore;
+  clock: Clock;
+  randomBytes?: (size: number) => Buffer;
+}): OAuthClient {
+  return new OAuthClient(opts.config, {
+    gateway: opts.gateway,
+    secretStore: opts.secretStore,
+    clock: opts.clock,
+    ...(opts.randomBytes ? { randomBytes: opts.randomBytes } : {}),
+  });
+}
+
+/**
+ * Drive the OAuth 2.0 + PKCE flow to a stored token (MC-07). The crypto — the PKCE verifier, the
+ * `state`/`nonce`, the token exchange, and persistence into the secret store — all live in the
+ * package's `OAuthClient`; this composes them into one flow with the ONE interactive step injected.
+ *
+ * `authorize` is the user-agent hop: in production it opens the browser and captures the redirect on
+ * a loopback listener; in a test it drives the fixture issuer over real HTTP. Isolating it here is
+ * what keeps the flow headless-testable without faking any of the security-relevant steps.
+ */
+export async function acquireMcpToken(opts: {
+  oauth: OAuthClient;
+  authorize: (
+    authorizationUrl: string,
+  ) => Promise<{ code?: string; state?: string; error?: string }>;
+}): Promise<StoredToken> {
+  const metadata = await opts.oauth.discover();
+  const pending = opts.oauth.beginAuthorization(metadata);
+  const callback = await opts.authorize(pending.authorizationUrl);
+  // `handleCallback` rejects a `state` mismatch as CSRF BEFORE any code is exchanged.
+  const code = opts.oauth.handleCallback(callback, pending);
+  return opts.oauth.exchangeCode(metadata, code, pending);
 }
 
 interface Bound {

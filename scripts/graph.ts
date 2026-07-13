@@ -272,12 +272,15 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'teams',
     'agents',
     'worktrees',
-    // NOT declared: `network` and `secret-store`. They back MCP's HTTP/SSE transports and OAuth
-    // token storage, which this app does not construct — only `stdio` servers are launchable from a
-    // config file today. Declaring a dependency the app does not import would be a claim in the
-    // graph that the code does not honour.
+    // Back MCP's HTTP/SSE transport and OAuth: `apps/cli/src/mcp.ts` constructs a `NetworkBroker`
+    // (over the real Node fetch) and a `brokeredGateway` for `http` servers, and composes
+    // `OAuthClient` against the secret store for token acquisition. Every MCP HTTP frame therefore
+    // crosses the same SSRF/host guard a web fetch does, and tokens are stored via the secret-store
+    // interface, never in the clear.
+    'network',
+    'secret-store',
   ],
-  tui: ['protocol', 'runtime', 'config', 'tui-kit', 'telemetry'],
+  tui: ['protocol', 'provider-core', 'runtime', 'config', 'tui-kit', 'telemetry'],
 
   // Test-only.
   //

@@ -12,6 +12,7 @@
   "exclude": ["src/**/*.test.ts", "dist", "src/**/*.test.tsx"],
   "references": [
     { "path": "../../packages/protocol" },
+    { "path": "../../packages/provider-core" },
     { "path": "../../packages/runtime" },
     { "path": "../../packages/config" },
     { "path": "../../packages/tui-kit" },

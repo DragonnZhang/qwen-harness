@@ -31,6 +31,8 @@
     { "path": "../../packages/scheduler" },
     { "path": "../../packages/teams" },
     { "path": "../../packages/agents" },
-    { "path": "../../packages/worktrees" }
+    { "path": "../../packages/worktrees" },
+    { "path": "../../packages/network" },
+    { "path": "../../packages/secret-store" }
   ]
 }

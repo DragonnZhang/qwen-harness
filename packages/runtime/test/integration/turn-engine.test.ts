@@ -1,5 +1,10 @@
 import { EventStore } from '@qwen-harness/storage';
-import type { CorrelationId, ThreadId } from '@qwen-harness/protocol';
+import {
+  harnessError,
+  HarnessError,
+  type CorrelationId,
+  type ThreadId,
+} from '@qwen-harness/protocol';
 import type { ModelProvider, ProviderStreamEvent } from '@qwen-harness/provider-core';
 import { freezeCapabilities } from '@qwen-harness/provider-core';
 import { MODEL_ACTOR, ManualClock, SequentialIds, USER_ACTOR } from '@qwen-harness/testkit';
@@ -369,5 +374,184 @@ describe('TurnEngine PreToolUse hook gating (HK-04/HK-05)', () => {
     expect(postCalls).toBe(1);
     const events = store2.readThread(THREAD).map((e) => e.payload);
     expect(events.some((p) => p.type === 'hook-fired' && p.event === 'PostToolUse')).toBe(true);
+  });
+});
+
+/**
+ * Transient-fault retry around the provider call (RT-04, golden path 9).
+ *
+ * The retry policy lived in `provider-core` — implemented, tested — but the turn loop called
+ * `provider.stream()` with no retry wrapper, so a retryable 503 or dropped connection failed the
+ * whole turn. Golden path 9 requires surviving that. These tests drive the REAL engine over the
+ * REAL store with a provider that throws, and assert the boundary: a retryable fault recovers, a
+ * non-retryable one does not, and retries are BOUNDED (never an infinite loop).
+ */
+describe('TurnEngine: transient provider-fault retry (RT-04)', () => {
+  const THREAD_R = 'thr_00retr' as ThreadId;
+  const CORR_R = 'cor_00retr' as CorrelationId;
+
+  /** A provider whose Nth stream() call throws `err`, and which otherwise replies and stops. */
+  function faultThenOk(throwsOnAttempts: number, err: Error): ModelProvider & { attempts: number } {
+    const p = {
+      attempts: 0,
+      capabilities: freezeCapabilities({
+        textStreaming: true,
+        reasoningSummary: false,
+        reasoningEffortGranularity: 'none' as const,
+        incrementalToolArgs: false,
+        background: false,
+        structuredOutput: false,
+        toolStream: false,
+      }),
+      async *stream(): AsyncGenerator<ProviderStreamEvent> {
+        p.attempts += 1;
+        if (p.attempts <= throwsOnAttempts) throw err;
+        yield { type: 'text-done', itemId: 'm', text: 'recovered' };
+        yield { type: 'done', finishReason: 'stop' };
+      },
+    };
+    return p;
+  }
+
+  function newStore() {
+    const clock = new ManualClock(1_700_000_000_000);
+    const ids = new SequentialIds();
+    const store = new EventStore({ path: ':memory:', clock, ids });
+    store.append({
+      threadId: THREAD_R,
+      correlationId: CORR_R,
+      permissionProfile: 'ask',
+      actor: USER_ACTOR,
+      payload: { type: 'thread-created', cwd: '/w', canonicalRepo: null, name: null },
+    });
+    return { clock, ids, store };
+  }
+
+  const retryable = (): HarnessError =>
+    harnessError({
+      origin: 'provider',
+      category: 'provider.transient.service_unavailable',
+      message: 'service temporarily unavailable',
+      retryable: true,
+    });
+
+  const permanent = (): HarnessError =>
+    harnessError({
+      origin: 'provider',
+      category: 'provider.auth.invalid_key',
+      message: 'invalid api key',
+      retryable: false,
+      userActionRequired: true,
+    });
+
+  it('recovers from a retryable fault and completes the turn', async () => {
+    const { clock, ids, store } = newStore();
+    const provider = faultThenOk(2, retryable()); // fail twice, succeed on the third
+    const engine = new TurnEngine({
+      provider,
+      tools: recordingExecutor(),
+      sink: {
+        append: (e) => store.append({ ...e, causationId: (e.causationId ?? null) as never }),
+      },
+      ids,
+      clock,
+      rng: () => 0.5, // deterministic jitter
+      // Instant backoff so the test does not actually wait out the exponential delay.
+      retryPolicy: {
+        maxAttempts: 5,
+        maxElapsedMs: 60_000,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        honorServerHint: true,
+      },
+    });
+    // The clock's sleep is provided by the store's clock? No — inject an instant sleep.
+    (clock as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+    const result = await engine.run({
+      threadId: THREAD_R,
+      correlationId: CORR_R,
+      permissionProfile: 'ask',
+      model: 'qwen3.7-max',
+      instructions: 'be terse',
+      history: [],
+      userText: 'hi',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    expect(provider.attempts).toBe(3); // two failures + one success
+    expect(result.state).toBe('completed');
+    expect(result.finalText).toBe('recovered');
+  });
+
+  it('does NOT retry a non-retryable fault — it fails once, immediately', async () => {
+    const { clock, ids, store } = newStore();
+    const provider = faultThenOk(1, permanent());
+    const engine = new TurnEngine({
+      provider,
+      tools: recordingExecutor(),
+      sink: {
+        append: (e) => store.append({ ...e, causationId: (e.causationId ?? null) as never }),
+      },
+      ids,
+      clock,
+      rng: () => 0.5,
+    });
+    (clock as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+    const result = await engine.run({
+      threadId: THREAD_R,
+      correlationId: CORR_R,
+      permissionProfile: 'ask',
+      model: 'qwen3.7-max',
+      instructions: 'be terse',
+      history: [],
+      userText: 'hi',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    expect(provider.attempts).toBe(1); // NOT retried
+    expect(result.state).toBe('failed');
+  });
+
+  it('retries are BOUNDED — a permanently-failing retryable fault stops at the attempt budget', async () => {
+    const { clock, ids, store } = newStore();
+    const provider = faultThenOk(999, retryable()); // never succeeds
+    const engine = new TurnEngine({
+      provider,
+      tools: recordingExecutor(),
+      sink: {
+        append: (e) => store.append({ ...e, causationId: (e.causationId ?? null) as never }),
+      },
+      ids,
+      clock,
+      rng: () => 0.5,
+      retryPolicy: {
+        maxAttempts: 4,
+        maxElapsedMs: 60_000,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        honorServerHint: true,
+      },
+    });
+    (clock as unknown as { sleep: (ms: number) => Promise<void> }).sleep = () => Promise.resolve();
+
+    const result = await engine.run({
+      threadId: THREAD_R,
+      correlationId: CORR_R,
+      permissionProfile: 'ask',
+      model: 'qwen3.7-max',
+      instructions: 'be terse',
+      history: [],
+      userText: 'hi',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    // Exactly maxAttempts tries, then it fails — never an infinite loop.
+    expect(provider.attempts).toBe(4);
+    expect(result.state).toBe('failed');
   });
 });

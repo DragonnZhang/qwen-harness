@@ -1,9 +1,4 @@
-import {
-  DEFAULT_NETWORK_POLICY,
-  NetworkError,
-  type NetworkBroker,
-  type NetworkPolicy,
-} from '@qwen-harness/network';
+import type { NetworkBroker } from '@qwen-harness/network';
 
 /**
  * The HTTP seam for the MCP package.
@@ -13,14 +8,13 @@ import {
  * Streamable-HTTP transport, the SSE transport, and OAuth all talk to an injected `HttpGateway`
  * instead of opening a socket.
  *
- * The shipped `NetworkBroker` is GET-only, reads a bounded body, and sanitizes it (perfect for
- * OAuth metadata discovery, which this gateway routes straight through it). But JSON-RPC POSTs and
- * a never-ending SSE stream cannot be expressed by that GET-and-buffer surface, and the broker may
- * not be modified here. So the gateway takes TWO collaborators from the network layer: the broker
- * itself (used for discovery GETs, SSRF-guarded and sanitized) and a raw request/stream primitive
- * the composition root backs with the same undici the broker uses. Every URL the raw primitive is
- * asked to reach is first validated against the SAME `NetworkPolicy` the broker enforces, so a POST
- * to a loopback or metadata address is refused exactly as a GET would be.
+ * The gateway routes EVERYTHING through the one `NetworkBroker`, which now carries a POST-with-body
+ * and streaming egress (`broker.send`) alongside its sanitizing GET (`broker.fetch`). There is no
+ * second, separately-guarded HTTP primitive to keep in sync — the SSRF/host/scheme/redirect guard
+ * lives once, in the broker, and applies to a JSON-RPC POST and an SSE GET exactly as it does to a
+ * fetched page. Discovery GETs go through `broker.fetch` (sanitized, since OAuth metadata is
+ * untrusted text); JSON-RPC POSTs and the SSE stream go through `broker.send` (raw, because a frame
+ * must be byte-exact and `text/event-stream` is not a page content-type).
  */
 
 export interface HttpRequest {
@@ -67,95 +61,46 @@ export interface HttpGateway {
   ): Promise<SseConnection>;
 }
 
-/**
- * The raw request/stream primitive the composition root provides. It is where the ACTUAL socket
- * lives — in the app (or the network package), never in `mcp`. Kept intentionally tiny.
- */
-export interface RawHttpResponse {
-  readonly status: number;
-  readonly headers: Readonly<Record<string, string>>;
-  text(): Promise<string>;
-  /** A byte stream for SSE, or null for a non-streaming response. */
-  stream(): AsyncIterable<Uint8Array> | null;
-}
-export type RawHttp = (
-  request: HttpRequest,
-  opts: { signal?: AbortSignal },
-) => Promise<RawHttpResponse>;
-
-// -----------------------------------------------------------------------------------------------
-// URL policy guard — the same checks the broker makes, applied to POST/SSE the broker can't carry.
-// -----------------------------------------------------------------------------------------------
-
-const PRIVATE_HOST = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|::1|fc00:|fe80:)/i;
-const PRIVATE_IPV4_172 = /^172\.(1[6-9]|2\d|3[01])\./;
-const METADATA_HOSTS = new Set(['169.254.169.254', '100.100.100.100', 'metadata.google.internal']);
-
-/**
- * Validate a URL against the network policy WITHOUT performing IO. This mirrors the broker's guard
- * so a POST/SSE reaches nowhere a GET could not; the broker owns the same rules for the GET path.
- */
-export function assertUrlAllowed(url: string, policy: NetworkPolicy): URL {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new NetworkError('request-failed', `invalid URL: ${url}`);
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new NetworkError('scheme-denied', `scheme ${parsed.protocol} is not allowed`);
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (METADATA_HOSTS.has(host)) {
-    throw new NetworkError('private-address', `refusing to reach the metadata endpoint ${host}`);
-  }
-  if (policy.blockPrivateAddresses && (PRIVATE_HOST.test(host) || PRIVATE_IPV4_172.test(host))) {
-    throw new NetworkError('private-address', `refusing to reach a private address: ${host}`);
-  }
-  for (const deny of policy.denyHosts) {
-    if (host === deny || host.endsWith(`.${deny}`)) {
-      throw new NetworkError('host-denied', `host ${host} is denied by policy`);
-    }
-  }
-  if (policy.allowHosts.length > 0) {
-    const ok = policy.allowHosts.some((h) => host === h || host.endsWith(`.${h}`));
-    if (!ok) throw new NetworkError('host-denied', `host ${host} is not on the allowlist`);
-  }
-  return parsed;
-}
-
 export interface BrokeredGatewayOptions {
   readonly broker: NetworkBroker;
-  readonly rawHttp: RawHttp;
-  readonly policy?: NetworkPolicy;
 }
 
 /**
- * The production gateway: discovery GETs go through the real `NetworkBroker` (SSRF-guarded,
- * sanitized), POST/SSE go through the raw primitive after the identical policy guard.
+ * The production gateway. Discovery GETs go through `broker.fetch` (SSRF-guarded AND sanitized,
+ * because OAuth metadata is untrusted text). JSON-RPC POSTs and the SSE stream go through
+ * `broker.send` — the SAME guard, raw body. There is no second guarded primitive here: the broker
+ * is the single authority, so a POST is refused for a loopback/metadata/denied host exactly as a
+ * GET is, with no duplicated regex to drift out of sync.
  */
 export function brokeredGateway(opts: BrokeredGatewayOptions): HttpGateway {
-  const policy = opts.policy ?? DEFAULT_NETWORK_POLICY;
   return {
     async send(request, callOpts = {}): Promise<HttpResponse> {
       if (request.method === 'GET') {
-        // A GET is exactly what the broker does well — let it enforce policy and read the body.
+        // A GET is exactly what the broker's sanitizing path does well — let it enforce policy and
+        // read the (bounded, sanitized) body. Used for OAuth metadata discovery.
         const result = await opts.broker.fetch(request.url, callOpts);
         return { status: result.status, headers: {}, body: result.content };
       }
-      assertUrlAllowed(request.url, policy);
-      const response = await opts.rawHttp(request, callOpts);
+      // POST/DELETE: the broker's guarded raw egress. It applies the identical SSRF/host/scheme/
+      // redirect guard and throws before any socket if the URL is refused.
+      const response = await opts.broker.send(request, callOpts);
       return { status: response.status, headers: response.headers, body: await response.text() };
     },
     async openSse(request, handlers, callOpts = {}): Promise<SseConnection> {
-      assertUrlAllowed(request.url, policy);
-      const response = await opts.rawHttp(
+      // `close()` must actually tear the socket down, so the abort signal is threaded into the
+      // guarded GET rather than merely flipping a flag the loop notices on the next event.
+      const controller = new AbortController();
+      if (callOpts.signal) {
+        callOpts.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+      // The server→client stream is a guarded GET through the raw egress (streaming, not buffered).
+      const response = await opts.broker.send(
         {
-          ...request,
           method: 'GET',
+          url: request.url,
           headers: { Accept: 'text/event-stream', ...(request.headers ?? {}) },
         },
-        callOpts,
+        { signal: controller.signal },
       );
       const stream = response.stream();
       if (stream === null) {
@@ -165,7 +110,6 @@ export function brokeredGateway(opts: BrokeredGatewayOptions): HttpGateway {
       const parser = new SseParser();
       let closed = false;
       let lastId: string | null = null;
-      const controller = new AbortController();
       void (async () => {
         try {
           for await (const chunk of stream) {

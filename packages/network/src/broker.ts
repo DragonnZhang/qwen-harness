@@ -56,16 +56,59 @@ export class NetworkError extends Error {
   }
 }
 
-/** Injected so tests can supply a fake fetch that replays fixtures without a socket. */
+/**
+ * Injected so tests can supply a fake fetch that replays fixtures without a socket.
+ *
+ * `method`/`headers`/`body` were added for the guarded POST-with-body egress (`send`). They are
+ * optional so the many GET-only fakes that ignore `init` keep working — a GET is `method`
+ * undefined. `redirect: 'manual'` stays required because BOTH `fetch` and `send` follow redirects
+ * themselves so every hop is re-checked against policy (an auto-followed 302 to a metadata endpoint
+ * would be the classic SSRF).
+ */
 export type FetchImpl = (
   url: string,
-  init: { redirect: 'manual'; signal?: AbortSignal },
+  init: {
+    readonly method?: string;
+    readonly redirect: 'manual';
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly body?: string;
+    readonly signal?: AbortSignal;
+  },
 ) => Promise<FetchResponse>;
 export interface FetchResponse {
   readonly status: number;
   readonly headers: { get(name: string): string | null };
   readonly body: AsyncIterable<Uint8Array> | null;
   text(): Promise<string>;
+  /**
+   * Every response header, for the RAW egress path (`send`). Optional so a GET-only fake that only
+   * needs `headers.get` need not enumerate; the raw response reports `{}` when it is absent.
+   */
+  headerEntries?(): readonly (readonly [string, string])[];
+}
+
+/** A method+body request for the guarded raw egress: JSON-RPC POST, OAuth token POST, SSE GET. */
+export interface OutboundRequest {
+  readonly method: 'GET' | 'POST' | 'DELETE';
+  readonly url: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: string;
+}
+
+/**
+ * The RAW response from `send`. UNLIKE `fetch` it is NOT sanitized and NOT content-type-gated: a
+ * JSON-RPC frame must be parsed byte-exact, and an SSE stream is `text/event-stream`, which the
+ * page-oriented content-type allowlist would reject. The SCHEME/HOST/SSRF/allowlist/redirect guard
+ * is identical — only the body handling differs, and that difference is the whole reason `send`
+ * exists next to `fetch` rather than replacing it.
+ */
+export interface RawEgressResponse {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  /** Buffer the body under the same byte cap as `fetch`, but THROW on overflow — a truncated JSON-RPC frame is unparseable, so silent truncation would be worse than a clear error. */
+  text(): Promise<string>;
+  /** The raw byte stream, for SSE. `null` when the transport returned no stream. */
+  stream(): AsyncIterable<Uint8Array> | null;
 }
 
 export interface FetchResult {
@@ -196,6 +239,77 @@ export class NetworkBroker {
   }
 
   /**
+   * The guarded raw egress (POST/DELETE, or a streaming GET for SSE). It runs the SAME redirect
+   * loop and the SAME `checkUrl` guard as `fetch` — scheme allowlist, host denylist, the SSRF block
+   * on loopback/link-local/metadata/RFC-1918, allowlist enforcement, and a re-check at EVERY
+   * redirect hop — so a POST reaches nowhere a GET could not. What it does NOT do is sanitize or
+   * content-type-gate the body: a JSON-RPC frame must be byte-exact and an SSE stream is
+   * `text/event-stream`. The security-critical checks are unchanged; only body handling differs.
+   */
+  async send(request: OutboundRequest, opts: { signal?: AbortSignal } = {}): Promise<RawEgressResponse> {
+    let current = request.url;
+
+    for (let hop = 0; hop <= this.#policy.maxRedirects; hop++) {
+      const parsed = checkUrl(current, this.#policy);
+
+      const response = await this.#fetch(current, {
+        method: request.method,
+        redirect: 'manual',
+        ...(request.headers ? { headers: request.headers } : {}),
+        ...(request.body !== undefined ? { body: request.body } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      });
+
+      // A redirect: re-check the next URL against policy before following it — identical to `fetch`,
+      // so a 302 to 169.254.169.254 on the POST path is refused mid-chain exactly as on the GET path.
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (location === null) {
+          throw new NetworkError(
+            'request-failed',
+            `redirect ${response.status} with no Location header`,
+          );
+        }
+        current = new URL(location, parsed).toString();
+        continue;
+      }
+
+      const headers: Record<string, string> = {};
+      for (const [name, value] of response.headerEntries?.() ?? []) {
+        headers[name.toLowerCase()] = value;
+      }
+      return {
+        status: response.status,
+        headers,
+        text: () => this.#readBoundedStrict(response),
+        stream: () => response.body,
+      };
+    }
+
+    throw new NetworkError('too-many-redirects', `exceeded ${this.#policy.maxRedirects} redirects`);
+  }
+
+  /** Buffer a body under the byte cap, throwing on overflow rather than truncating (see `text`). */
+  async #readBoundedStrict(response: FetchResponse): Promise<string> {
+    const cap = this.#policy.maxDownloadBytes;
+    if (response.body === null) {
+      const text = await response.text();
+      if (Buffer.byteLength(text, 'utf8') > cap) {
+        throw new NetworkError('too-large', `response exceeds ${cap} bytes`);
+      }
+      return text;
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for await (const chunk of response.body) {
+      total += chunk.byteLength;
+      if (total > cap) throw new NetworkError('too-large', `response exceeds ${cap} bytes`);
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+
+  /**
    * Read the body with a hard byte cap enforced WHILE streaming, so a server advertising (or
    * lying about) a huge body cannot exhaust memory before we notice.
    */
@@ -218,4 +332,51 @@ export class NetworkBroker {
     }
     return { text: Buffer.concat(chunks).toString('utf8'), truncated };
   }
+}
+
+/**
+ * The production `FetchImpl` the composition root injects into the broker: Node's built-in `fetch`
+ * (undici under the hood — a declared I/O owner for this package). It is the ONLY socket the broker
+ * ever opens, which is why the guard in `checkUrl` is the whole story: nothing reaches the network
+ * except through a `FetchImpl`, and the real one lives here.
+ *
+ * The response body is exposed BOTH as an async iterable (for the streamed byte cap and for SSE) and
+ * via `text()`; header enumeration is provided so the raw egress can report response headers.
+ */
+export function nodeFetchImpl(): FetchImpl {
+  return async (url, init) => {
+    const response = await globalThis.fetch(url, {
+      method: init.method ?? 'GET',
+      redirect: init.redirect,
+      ...(init.headers ? { headers: { ...init.headers } } : {}),
+      ...(init.body !== undefined ? { body: init.body } : {}),
+      ...(init.signal ? { signal: init.signal } : {}),
+    });
+    return {
+      status: response.status,
+      headers: { get: (name) => response.headers.get(name) },
+      body: toAsyncIterable(response.body),
+      text: () => response.text(),
+      headerEntries: () => [...response.headers.entries()],
+    };
+  };
+}
+
+/** Adapt a web `ReadableStream` to an async iterable so the broker can cap/stream it uniformly. */
+function toAsyncIterable(
+  stream: ReadableStream<Uint8Array> | null,
+): AsyncIterable<Uint8Array> | null {
+  if (stream === null) return null;
+  return (async function* () {
+    const reader = stream.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value !== undefined) yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
 }

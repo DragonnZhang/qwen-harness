@@ -13,12 +13,15 @@
  */
 
 import { render } from 'ink';
+import type { ReactElement } from 'react';
 
 import { ItemSchema, sanitize, type Item } from '@qwen-harness/protocol';
 
 import { App } from './App.tsx';
 import { DEMO_ITEMS } from './demo.ts';
-import { emitterSource } from './source.ts';
+import { LiveApp } from './live.tsx';
+import { createScriptedTurn, type LiveController } from './scripted-turn.ts';
+import { arraySource, emitterSource } from './source.ts';
 import type { StatusModel } from './types.ts';
 
 /** ESC = 27. Built via fromCharCode so no raw control byte or escape sits in source (per brief). */
@@ -59,18 +62,64 @@ function userMessage(text: string): Item {
   });
 }
 
+/**
+ * Load a durable transcript a prior process emitted (the base64 JSON in `QWEN_TUI_RESUME`) and
+ * validate every item at the boundary. This is the TUI half of "session resume": a fresh process
+ * re-projects durable state it did not itself produce. Engine-level turn continuation is the
+ * daemon's responsibility; here the transcript survives process death and re-renders.
+ */
+function resumeItems(encoded: string): readonly Item[] {
+  const json = Buffer.from(encoded, 'base64').toString('utf8');
+  const raw: unknown = JSON.parse(json);
+  if (!Array.isArray(raw)) throw new Error('QWEN_TUI_RESUME is not a JSON array');
+  return raw.map((entry) => ItemSchema.parse(entry));
+}
+
+/** Pick the root element for this invocation, plus an optional live controller for the exit dump. */
+function selectRoot(mode: StatusModel['mode']): {
+  element: ReactElement;
+  controller: LiveController | null;
+} {
+  const resume = process.env['QWEN_TUI_RESUME'];
+  if (typeof resume === 'string' && resume.length > 0) {
+    return {
+      element: <App source={arraySource(resumeItems(resume))} status={buildStatus(mode)} />,
+      controller: null,
+    };
+  }
+
+  if (process.argv.includes('--scripted-turn')) {
+    const controller = createScriptedTurn(mode);
+    return { element: <LiveApp controller={controller} />, controller };
+  }
+
+  const source = emitterSource(DEMO_ITEMS);
+  return {
+    element: (
+      <App
+        source={source}
+        status={buildStatus(mode)}
+        onSubmit={(text) => source.push(userMessage(text))}
+      />
+    ),
+    controller: null,
+  };
+}
+
 function main(): void {
   const mode: StatusModel['mode'] = process.argv.includes('--yolo') ? 'yolo' : 'ask';
-  const source = emitterSource(DEMO_ITEMS);
+  const { element, controller } = selectRoot(mode);
 
-  const instance = render(
-    <App
-      source={source}
-      status={buildStatus(mode)}
-      onSubmit={(text) => source.push(userMessage(text))}
-    />,
-    { exitOnCtrlC: false },
-  );
+  const instance = render(element, { exitOnCtrlC: false });
+
+  // The durable transcript is emitted once, on the way out, on stderr — the terminal is already
+  // being restored, so nothing races Ink's live region. A resuming process reads it back.
+  let dumped = false;
+  const dumpDurable = (): void => {
+    if (dumped || controller === null) return;
+    dumped = true;
+    controller.dumpDurable((line) => process.stderr.write(`\n${line}\n`));
+  };
 
   let shuttingDown = false;
   const shutdown = (code: number): void => {
@@ -78,6 +127,7 @@ function main(): void {
     shuttingDown = true;
     restore();
     instance.unmount();
+    dumpDurable();
     // Give Ink a tick to flush its final frame, then leave with a clean terminal.
     setImmediate(() => {
       restore();
@@ -98,6 +148,7 @@ function main(): void {
     .waitUntilExit()
     .then(() => {
       restore();
+      dumpDurable();
       process.exit(0);
     })
     .catch(() => {

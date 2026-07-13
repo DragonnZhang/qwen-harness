@@ -86,6 +86,9 @@ export {
 export {
   loadMcpConfiguration,
   connectMcp,
+  acquireMcpToken,
+  mcpSecretStore,
+  createMcpOAuthClient,
   trustServer,
   loadTrustedServers,
   trustFilePath,
