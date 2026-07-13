@@ -15,11 +15,11 @@ Snapshot: 2026-07-13 (evening)
 | 03 policy, sandbox, approvals, hooks                             | **done** — approvals pause/resume the same turn; hooks fire on the turn  |
 | 04 sessions, recovery, CLI, TUI slice                            | **done** — CLI + TUI; UI-13 PTY restoration gate green (`3a60b6d`)       |
 | 05 instructions, skills, context, memory                         | **done** — skills+prompt modes (`a558f3e`); instructions/context wired   |
-| 06 todo, tasks, background, Cron, worktrees                      | packages done; **NOT wired into any app** (blocks golden path 6)         |
-| 07 subagents, teams, protocols, autonomy                         | packages done; **NOT wired into any app** (blocks golden path 5)         |
+| 06 todo, tasks, background, Cron, worktrees                      | **done** — tasks/background/cron wired; golden path 6 green (`686432e`)   |
+| 07 subagents, teams, protocols, autonomy                         | packages done; **teams NOT wired into any app** (blocks golden path 5)    |
 | 08 MCP and external extension                                    | **done** — mcp wired into CLI, shares policy ceiling (`a558f3e`)         |
-| 09 product completeness and release hardening                    | packaging PK-01/02/04 done; docs done; `pnpm check` green being verified |
-| 10 final integrated and live acceptance                          | golden paths 1-3 done; 4-10 remain; final audit not started              |
+| 09 product completeness and release hardening                    | **PASSED** — `pnpm check` green from clean tree (`dd44dc1`), 1537 tests   |
+| 10 final integrated and live acceptance                          | golden paths 1,2,3,6,10 done; 4,5,7,8,9 remain; final audit not started   |
 
 Live lane: **`LIVE_AVAILABLE`**. Three live tests pass against real `qwen3.7-max`: a provider smoke
 (streamed tool call + usage + request id, no secret in the trace), a full coding loop (the model
@@ -46,15 +46,19 @@ driving the compiled TUI bundle.
 
 ## What remains
 
-1. **Wire `teams`/`background`/`scheduler`/`worktrees`/`agents`/`tasks` into an app.** They are
-   built and tested but reachable from no application, so golden paths 5 (team execution) and 6
-   (scheduling) cannot exist yet, and their matrix rows cannot be verified. This is the largest
-   remaining gap.
-2. **Golden paths 4–10.** Done: 1 (coding loop), 2 (recovery), 3 (permissions). Remaining: 4 (long
-   context/compaction — context is wired, needs the E2E), 5 (teams), 6 (scheduling), 7 (MCP end to
-   end incl. HTTP transport, which needs a POST-with-body egress the network broker lacks), 8
-   (TUI/PTY full task), 9 (live model), 10 (fresh install — packaging exists, needs the E2E).
-3. **The final audit (checkpoint 10).** Flip matrix rows to `VERIFIED` only where the declared
+1. **Wire `teams`/`agents`/`worktrees` into an app** (golden path 5). The last big reachability
+   gap: lead creates dependent tasks, launches isolated teammates in worktrees, handles plan/
+   permission approvals, resolves concurrent claiming, receives background results, shuts down.
+   `tasks`/`background`/`scheduler` are now wired (path 6 done).
+2. **Golden paths still open:** 4 (long-context compaction — context IS wired and has an
+   integration test; needs the full golden-path E2E asserting goal/constraints/tasks/files/team-id/
+   permissions survive), 5 (teams), 7 (MCP end to end incl. HTTP transport + OAuth — HTTP needs a
+   POST-with-body egress the GET-only network broker lacks; that is a real package gap), 8 (TUI/PTY
+   full task with resize/approval/interrupt/resume), 9 (live model — needs credentials, may be
+   LIVE_BLOCKED). **Done: 1, 2, 3, 6, 10.**
+3. **`config.baseUrl` is not plumbed into the provider** (found by golden path 10). Loaded + shown
+   by doctor, ignored at runtime. Fix lets the installed binary target a non-live endpoint.
+4. **The final audit (checkpoint 10).** Flip matrix rows to `VERIFIED` only where the declared
    evidence exists. Produce the final report with commands, durations, evidence, commit IDs.
 
 ## Known honest gaps (do not paper over)
