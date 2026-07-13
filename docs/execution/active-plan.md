@@ -79,8 +79,19 @@ engine. STILL remaining for 04: the per-user supervisor daemon + versioned Unix-
 (SS-08), and the Ink TUI vertical slice (`tui-kit` + `apps/tui`). The Ink spike passed (ADR 0004);
 `tui-kit` and `telemetry` are scaffolded but empty.
 
-Checkpoint 05 (in progress, delegated): `instructions` + `context` + `memory` (skills still to do).
-Checkpoint 06 (in progress, delegated): `tasks` (todo + durable graph); background/Cron/worktrees to do.
+Checkpoint 05 (mostly done): `instructions` (resolution + prompt sections) and `context` (budget,
+cheap reduction, compaction, /context//compact//clear) DONE. STILL: `memory` (retrieval/extraction/
+Dream) and skills.
+Checkpoint 06 (partial): `tasks` (todo + durable dependency graph, atomic claim, no-reuse) and
+`worktrees` (isolation, refuse-dirty-removal) DONE. STILL: `background`, `scheduler` (Cron).
+Also DONE: `telemetry` (local redacted trace).
+
+State as of latest batch: **18 packages + 2 apps implemented. 967 deterministic tests + 3 live
+tests, all green. All gates pass.** Matrix: 0 VERIFIED, 77 IN_PROGRESS, 101 REQUIRED.
+
+Remaining packages to build: memory, background, scheduler, agents, teams, mcp, network,
+secret-store, tui-kit, sandbox skills. Plus apps: daemon, remote-worker, tui. Plus checkpoint 09
+(release hardening, all docs, packaging PK-01/PK-02) and 10 (full live suite, all ten golden paths).
 
 Checkpoints 05-10: instructions/skills/context/memory; todo/tasks/background/Cron/worktrees;
 subagents/teams; MCP/OAuth; release hardening (packaging, PK-01/PK-02, all docs); final integrated +

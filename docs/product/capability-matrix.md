@@ -100,7 +100,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | SB-03 | Sandbox capability detection and diagnostics run at startup and through `doctor`; an unavailable required backend fails safe. | U,I,E,D | IN_PROGRESS |
 | SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | IN_PROGRESS |
 | HK-01 | Implement these 30 hook events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop, StopFailure, Setup, UserPromptSubmit, Notification, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, PreCompact, PostCompact, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, and PostToolBatch. | U,I,E | IN_PROGRESS |
-| HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | REQUIRED |
+| HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | IN_PROGRESS |
 | HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | IN_PROGRESS |
 | HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | IN_PROGRESS |
 | HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | IN_PROGRESS |
@@ -111,13 +111,13 @@ Sources: [s05](https://learn.shareai.run/en/s05/), [s12](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| WK-01 | A turn-local todo checklist supports pending/in-progress/completed, `activeForm`, ordering, visibility in TUI, and preservation through compaction. | U,I,T,E | REQUIRED |
-| WK-02 | Legacy `TodoWrite` semantics remain usable while the preferred durable task API is Create/Get/Update/List; the two systems are not conflated. | U,I,E,D | REQUIRED |
-| WK-03 | Durable tasks store high-water ID, subject, description, active form, owner, status, blocks, blockedBy, metadata, timestamps, and audit provenance independently. | U,P,I | REQUIRED |
-| WK-04 | Task state transitions, claim, release, complete, delete, and owner-loss recovery are validated by a state machine. | U,P,I,F | REQUIRED |
-| WK-05 | A task cannot begin until all dependencies complete; completing upstream reports newly unblocked work. Cycles and missing references are rejected. | U,P,I,E | REQUIRED |
-| WK-06 | Atomic claiming prevents two agents from owning one task; task-file and list-level locking reread inside the lock to prevent TOCTOU races. | P,I,F,E | REQUIRED |
-| WK-07 | Deleted IDs are never reused; concurrent list/watch/update behavior survives crashes and compaction. | U,P,I,F | REQUIRED |
+| WK-01 | A turn-local todo checklist supports pending/in-progress/completed, `activeForm`, ordering, visibility in TUI, and preservation through compaction. | U,I,T,E | IN_PROGRESS |
+| WK-02 | Legacy `TodoWrite` semantics remain usable while the preferred durable task API is Create/Get/Update/List; the two systems are not conflated. | U,I,E,D | IN_PROGRESS |
+| WK-03 | Durable tasks store high-water ID, subject, description, active form, owner, status, blocks, blockedBy, metadata, timestamps, and audit provenance independently. | U,P,I | IN_PROGRESS |
+| WK-04 | Task state transitions, claim, release, complete, delete, and owner-loss recovery are validated by a state machine. | U,P,I,F | IN_PROGRESS |
+| WK-05 | A task cannot begin until all dependencies complete; completing upstream reports newly unblocked work. Cycles and missing references are rejected. | U,P,I,E | IN_PROGRESS |
+| WK-06 | Atomic claiming prevents two agents from owning one task; task-file and list-level locking reread inside the lock to prevent TOCTOU races. | P,I,F,E | IN_PROGRESS |
+| WK-07 | Deleted IDs are never reused; concurrent list/watch/update behavior survives crashes and compaction. | U,P,I,F | IN_PROGRESS |
 | WK-08 | TaskCreated and TaskCompleted hooks, filesystem/event watchers, assignment messages, plan approval, and TUI task graph all consume the same task events. | I,T,E | REQUIRED |
 | WK-09 | Plans can be proposed, reviewed, rejected with feedback, revised, approved, and converted to task graphs without granting implementation authority prematurely. | U,I,T,E | REQUIRED |
 
@@ -153,11 +153,11 @@ Sources: [s07](https://learn.shareai.run/en/s07/), [s10](https://learn.shareai.r
 | IN-03 | Sources and precedence cover managed, user, project, additional directory, legacy commands, bundled, plugin, MCP, dynamic, and conditional skills. | U,P,I,D | REQUIRED |
 | IN-04 | Frontmatter supports name, description, usage condition, allowed tools, context mode, model hint, hooks, paths, user invocation, and argument substitution with strict validation. | U,I,S,E | REQUIRED |
 | IN-05 | Inline and forked skills have explicit context, tool, budget, permission, and result semantics; catalog and loaded-content token budgets are enforced. | U,P,I,E | REQUIRED |
-| IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | REQUIRED |
-| IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | REQUIRED |
-| IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | REQUIRED |
+| IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | IN_PROGRESS |
+| IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | IN_PROGRESS |
+| IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | IN_PROGRESS |
 | IN-09 | Support minimal, default, proactive, coordinator, and agent-defined prompt modes with the activation, prompt delta, tool availability, policy inheritance, cache behavior, and observable tasks frozen in `docs/product/defaults.md`. | U,I,E,D | REQUIRED |
-| IN-10 | Instruction text is sent on every provider request when the transport does not inherit it; cache optimization cannot change behavior. | U,I,F,L | REQUIRED |
+| IN-10 | Instruction text is sent on every provider request when the transport does not inherit it; cache optimization cannot change behavior. | U,I,F,L | IN_PROGRESS |
 
 ## H. Context compression and long-term memory
 
@@ -165,12 +165,12 @@ Sources: [s08](https://learn.shareai.run/en/s08/), [s09](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| CX-01 | Context budgets use provider capability and measured serialized size/token estimates, reserve response/tool headroom, and expose current utilization. | U,P,I,T | REQUIRED |
-| CX-02 | Cheap reduction runs first: offload large results, prune only safe middle content, and replace old tool results while retaining call/result pairing and durable references. | U,P,I,F | REQUIRED |
-| CX-03 | Threshold compaction writes the full transcript boundary, creates a structured summary, and preserves user goal, constraints, plan, todos/tasks, active files, decisions, errors, and unfinished obligations. | U,I,F,E,L | REQUIRED |
+| CX-01 | Context budgets use provider capability and measured serialized size/token estimates, reserve response/tool headroom, and expose current utilization. | U,P,I,T | IN_PROGRESS |
+| CX-02 | Cheap reduction runs first: offload large results, prune only safe middle content, and replace old tool results while retaining call/result pairing and durable references. | U,P,I,F | IN_PROGRESS |
+| CX-03 | Threshold compaction writes the full transcript boundary, creates a structured summary, and preserves user goal, constraints, plan, todos/tasks, active files, decisions, errors, and unfinished obligations. | U,I,F,E,L | IN_PROGRESS |
 | CX-04 | Proactive compaction and reactive overflow compaction are distinct, bounded, observable paths with pre/post hooks and retry circuit breakers. | U,P,I,F,L | REQUIRED |
 | CX-05 | Compaction restores goal/state plus root/unscoped instructions and auto memory; nested/path rules return only after matching access. Reattach recent skills at 5K each/25K total and preserve file/worktree/agent/team/tool/permission state without inventing completion. | U,I,F,E | REQUIRED |
-| CX-06 | `/compact [focus]`, `/context`, and `/clear` have explicit effects; context thrashing and diminishing returns stop safely. | U,I,T,E | REQUIRED |
+| CX-06 | `/compact [focus]`, `/context`, and `/clear` have explicit effects; context thrashing and diminishing returns stop safely. | U,I,T,E | IN_PROGRESS |
 | MM-01 | Long-term memory is Markdown with validated YAML metadata. Startup loads the first 200 lines or 25 KiB of `MEMORY.md`; topic files load on demand, and `/memory` exposes audited provenance/editing. Types include user, feedback, project, and reference. | U,I,S,T,D | REQUIRED |
 | MM-02 | Retrieval uses name/description side-selection with deterministic keyword fallback, provenance, per-file/session budgets, and failure isolation. | U,P,I,F,E | REQUIRED |
 | MM-03 | After a naturally completed non-cancelled turn, deterministic eligibility may run extraction; a valid empty result is a no-op. Stored memories are deduplicated and never contain secrets, raw private reasoning, transient noise, or unsupported claims. | U,P,I,S,L | REQUIRED |
@@ -219,10 +219,10 @@ Sources: [s18](https://learn.shareai.run/en/s18/) and [Claude Code worktrees](ht
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| GT-01 | Create an isolated worktree and branch from a validated base with collision-safe name/slug and no path traversal. | U,P,I,S | REQUIRED |
+| GT-01 | Create an isolated worktree and branch from a validated base with collision-safe name/slug and no path traversal. | U,P,I,S | IN_PROGRESS |
 | GT-02 | Enter/exit worktree for a session and cwd override for agents/teammates are distinct; every tool resolves against its assigned worktree. | U,I,E | REQUIRED |
-| GT-03 | Persist original cwd/branch/head, worktree path/branch/base, owner/session, and recovery state. | U,I,F | REQUIRED |
-| GT-04 | Keep and remove are explicit. Removal refuses dirty/unpushed work by default; discard requires exact approval and produces an audit event. | U,I,S,T | REQUIRED |
+| GT-03 | Persist original cwd/branch/head, worktree path/branch/base, owner/session, and recovery state. | U,I,F | IN_PROGRESS |
+| GT-04 | Keep and remove are explicit. Removal refuses dirty/unpushed work by default; discard requires exact approval and produces an audit event. | U,I,S,T | IN_PROGRESS |
 | GT-05 | Task-worktree binding is optional metadata and never silently changes task state; agent task ownership and workspace ownership remain independently recoverable. | U,P,I,F | REQUIRED |
 | GT-06 | Create/remove/keep hooks, config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior are tested. | U,P,I,F,E | REQUIRED |
 
@@ -250,8 +250,8 @@ Source: [Claude Code sessions](https://code.claude.com/docs/en/sessions) plus th
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | SS-01 | Threads and turns persist incrementally in a versioned SQLite WAL event store with transactional projections and migrations. | U,P,I,F | IN_PROGRESS |
-| SS-02 | Create/list/continue/resume by picker/name/ID, rename, fork/branch, export, archive, delete, and clear-context are available in TUI/CLI with canonical-repo/global search and name rules from defaults. | U,I,T,E | REQUIRED |
-| SS-03 | Fork creates new identity and history lineage without changing the original; export is a stable public schema independent from internal tables. | U,P,I,E,D | REQUIRED |
+| SS-02 | Create/list/continue/resume by picker/name/ID, rename, fork/branch, export, archive, delete, and clear-context are available in TUI/CLI with canonical-repo/global search and name rules from defaults. | U,I,T,E | IN_PROGRESS |
+| SS-03 | Fork creates new identity and history lineage without changing the original; export is a stable public schema independent from internal tables. | U,P,I,E,D | IN_PROGRESS |
 | SS-04 | Crash at every model/tool/approval/storage boundary recovers to a coherent state and never repeats a known-complete side effect. | P,I,F,E | REQUIRED |
 | SS-05 | Intent, start, output, and result identities make side effects idempotent or explicitly indeterminate; destructive indeterminate work requires inspection. | U,P,I,F,S | IN_PROGRESS |
 | SS-06 | JSONL trace/export and deterministic replay can rebuild projections, preserve unknown events, compare runtime decisions, and scrub secrets. | U,P,I,S,E | IN_PROGRESS |
@@ -289,8 +289,8 @@ These capabilities are required to make every timeline feature usable rather tha
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| OB-01 | Local structured trace records redacted model parameters, items, tools, policy, approvals, hooks, timings, retries, compaction, cancellation, usage, and acceptance evidence. | U,I,S,E | REQUIRED |
-| OB-02 | Logs, metrics, trace, and current state are readable by humans and implementing agents through CLI/JSON; verbosity and retention are configurable and telemetry is opt-in. | U,I,S,D | REQUIRED |
+| OB-01 | Local structured trace records redacted model parameters, items, tools, policy, approvals, hooks, timings, retries, compaction, cancellation, usage, and acceptance evidence. | U,I,S,E | IN_PROGRESS |
+| OB-02 | Logs, metrics, trace, and current state are readable by humans and implementing agents through CLI/JSON; verbosity and retention are configurable and telemetry is opt-in. | U,I,S,D | IN_PROGRESS |
 | OB-03 | Doctor reports environment, config provenance, provider capabilities, credential presence without value, sandbox, terminal, Git, MCP, storage, migrations, and known degradation. | U,I,S,T,D | IN_PROGRESS |
 | SC-01 | Adversarial suite covers malicious repository instructions, secret exfiltration, path/symlink escape, shell indirection, package/Git hooks, MCP abuse, ANSI/OSC spoofing, approval confusion, and resource exhaustion. | P,I,S,E | REQUIRED |
 | SC-02 | Repository content is untrusted context and cannot elevate tools, policy, network, secret access, hooks, skills, or managed configuration. | U,P,I,S | REQUIRED |
