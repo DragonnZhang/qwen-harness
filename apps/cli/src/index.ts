@@ -89,3 +89,44 @@ export {
   type ConnectedMcp,
 } from './mcp.ts';
 export { compositeExecutor, type McpSurface, type ModelTool } from './wiring.ts';
+
+// Durable work made reachable from the CLI: the task graph (WK-*), background lifecycle (BG-*), and
+// Cron scheduler + supervisor (CR-*). Exported so they are tested against the real production path.
+export {
+  openTaskGraph,
+  createTask,
+  listTasks,
+  getTask,
+  claimTask,
+  startTask,
+  completeTask,
+  releaseTask,
+  deleteTask,
+  renderTask,
+  normalizeTodos,
+} from './tasks.ts';
+export {
+  createSandboxRunner,
+  buildBackgroundPipeline,
+  createDurableBackgroundManager,
+  runSandboxedShell,
+  listDurableBackground,
+  isBackgroundCategory,
+  type ShellWorkload,
+  type ShellRunResult,
+  type DurableBackgroundRecord,
+} from './background.ts';
+export {
+  openScheduler,
+  addCron,
+  listCron,
+  runSupervisor,
+  authorityOf,
+  cronFireKey,
+  parseCron,
+  SCHEDULER_THREAD_ID,
+  type AddCronInput,
+  type FireOutcome,
+  type SupervisorResult,
+  type CronListItem,
+} from './scheduler.ts';

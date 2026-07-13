@@ -258,6 +258,12 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     // Token budgeting, offload, prune, and compaction, wired into the turn path via a
     // `ContextManager` the engine calls before every model round (`context.ts`).
     'context',
+    // Durable work: the task graph (`tasks.ts`), the background lifecycle (`background.ts`), and the
+    // Cron scheduler + supervisor (`scheduler.ts`). Each is constructed against the real event store
+    // so a task/job/background result survives a process restart by being reconstructed from the log.
+    'tasks',
+    'background',
+    'scheduler',
     // NOT declared: `network` and `secret-store`. They back MCP's HTTP/SSE transports and OAuth
     // token storage, which this app does not construct — only `stdio` servers are launchable from a
     // config file today. Declaring a dependency the app does not import would be a claim in the

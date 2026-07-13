@@ -50,6 +50,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@qwen-harness/background':
+        specifier: workspace:*
+        version: link:../../packages/background
       '@qwen-harness/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -86,12 +89,18 @@ importers:
       '@qwen-harness/sandbox-linux':
         specifier: workspace:*
         version: link:../../packages/sandbox-linux
+      '@qwen-harness/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@qwen-harness/skills':
         specifier: workspace:*
         version: link:../../packages/skills
       '@qwen-harness/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@qwen-harness/tasks':
+        specifier: workspace:*
+        version: link:../../packages/tasks
       '@qwen-harness/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -225,6 +234,12 @@ importers:
 
   evals:
     dependencies:
+      '@qwen-harness/background':
+        specifier: workspace:*
+        version: link:../packages/background
+      '@qwen-harness/cli':
+        specifier: workspace:*
+        version: link:../apps/cli
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../packages/policy
@@ -240,9 +255,15 @@ importers:
       '@qwen-harness/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
+      '@qwen-harness/scheduler':
+        specifier: workspace:*
+        version: link:../packages/scheduler
       '@qwen-harness/storage':
         specifier: workspace:*
         version: link:../packages/storage
+      '@qwen-harness/tasks':
+        specifier: workspace:*
+        version: link:../packages/tasks
       '@qwen-harness/testkit':
         specifier: workspace:*
         version: link:../packages/testkit

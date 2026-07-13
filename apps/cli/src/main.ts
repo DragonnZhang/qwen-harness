@@ -7,8 +7,12 @@ import {
   resolveProfile,
   type Actor,
   type ActorId,
+  type Clock,
   type CorrelationId,
+  type PermissionProfile,
+  type SideEffectId,
   type ThreadId,
+  type TurnId,
 } from '@qwen-harness/protocol';
 import type { ModelProvider } from '@qwen-harness/provider-core';
 import { DASHSCOPE_DEFAULTS, EnvCredentialSource } from '@qwen-harness/provider-dashscope';
@@ -30,7 +34,36 @@ import {
   listSessions,
   reconstructHistory,
 } from './sessions.ts';
+import {
+  createDurableBackgroundManager,
+  buildBackgroundPipeline,
+  isBackgroundCategory,
+  listDurableBackground,
+} from './background.ts';
+import {
+  addCron,
+  authorityOf,
+  listCron,
+  openScheduler,
+  parseCron,
+  preapprovalRule,
+  runSupervisor,
+  SCHEDULER_THREAD_ID,
+} from './scheduler.ts';
 import { listStuck, recoverInterrupted, resolveSideEffect } from './side-effects.ts';
+import {
+  claimTask,
+  completeTask,
+  createTask,
+  deleteTask,
+  getTask,
+  listTasks,
+  normalizeTodos,
+  openTaskGraph,
+  releaseTask,
+  renderTask,
+  startTask,
+} from './tasks.ts';
 import { createSkillSurface, renderCatalog } from './skills.ts';
 import { listTraceFiles, openTelemetry, readTraceFile } from './telemetry.ts';
 import { createHarnessRuntime, type GrantStore, type TurnOutcome } from './wiring.ts';
@@ -59,6 +92,13 @@ export interface CliDeps {
    * provider so a real second process can be driven deterministically.
    */
   readonly provider?: ModelProvider;
+  /**
+   * Override for the managed-policy file path. Injected ONLY for tests, exactly like `provider`:
+   * `bin.ts` never sets it, so production always resolves the ceiling from the fixed system path and
+   * no user-facing flag or env var can ever point the managed ceiling at a weaker file. A test that
+   * needs to prove the ceiling binds scheduled/background work supplies a managed file here.
+   */
+  readonly managedPath?: string;
 }
 
 /** The actor the model turn's context boundary/compaction items are attributed to. */
@@ -102,6 +142,20 @@ export async function main(deps: CliDeps): Promise<number> {
     deps.stdout('  memory [add ...]       show long-term memory with provenance, or store one');
     deps.stdout('  mcp [trust <server>]   show configured MCP servers, or trust a project server');
     deps.stdout('');
+    deps.stdout('  task create <subject> --active <form> [--blocked-by 1,2] [--desc ...]');
+    deps.stdout(
+      '  task list [--all] | get <id> | claim <id> --owner <o> | start/complete/release/delete <id>',
+    );
+    deps.stdout("  task todo '<json array>'   normalize a turn-local TodoWrite checklist");
+    deps.stdout('  background start --category <c> [--thread <id>] -- <cmd> <argv...>');
+    deps.stdout('  background list [--thread <id>] | status <id> | cancel <id>');
+    deps.stdout(
+      '  cron add --recurring "<expr>" | --one-shot --at <ms>|--in <sec>  --thread <id> [-- <cmd> ...]',
+    );
+    deps.stdout(
+      '  cron list | remove <id> | run [--now <ms>]   run = one supervisor poll, fires due jobs',
+    );
+    deps.stdout('');
     deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
     deps.stdout('         --skill <name>  run a skill by name');
     return 0;
@@ -141,6 +195,18 @@ export async function main(deps: CliDeps): Promise<number> {
     return sessionCommand(deps, command, rest);
   }
 
+  if (command === 'task') {
+    return taskCommand(deps, rest);
+  }
+
+  if (command === 'background') {
+    return backgroundCommand(deps, rest);
+  }
+
+  if (command === 'cron') {
+    return cronCommand(deps, rest);
+  }
+
   deps.stderr(`unknown command: ${command}`);
   return 1;
 }
@@ -177,6 +243,7 @@ async function runCommand(
       homeDir: homedir(),
       env: deps.env,
       cli: cliOverrides,
+      ...(deps.managedPath ? { managedPath: deps.managedPath } : {}),
     });
   } catch (err) {
     // A broken or hostile config file must fail the run, never be skipped into permissive defaults.
@@ -952,6 +1019,506 @@ function sessionCommand(deps: CliDeps, command: string, args: readonly string[])
       deps.stderr(`fork: ${e instanceof Error ? e.message : String(e)}`);
       return 1;
     }
+  } finally {
+    store.close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Durable work: task graph (WK-*), background lifecycle (BG-*), Cron (CR-*).
+//
+// Each of these opens the SAME event store `run` uses and reconstructs its state from the durable
+// log — a task, a job, or a background result exists across a restart because it is never held only
+// in memory. Every one loads the managed ceiling through `loadRunAuthority`, so scheduled and
+// background work is bound by exactly the policy a normal run is bound by (nothing may exceed it).
+// ---------------------------------------------------------------------------------------------
+
+const CLI_USER: Actor = { kind: 'user', id: 'act_user01' as ActorId };
+const CLI_SYSTEM: Actor = { kind: 'system', id: 'act_system' as ActorId };
+/** The default thread a background task notifies when the caller names none. */
+const BACKGROUND_THREAD = 'thr_background0' as ThreadId;
+
+function clockOf(deps: CliDeps): Clock {
+  return { now: deps.now, sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)) };
+}
+
+function openStore(deps: CliDeps): EventStore {
+  const stateDir = join(deps.cwd, '.qwen-harness');
+  mkdirSync(stateDir, { recursive: true });
+  return new EventStore({
+    path: join(stateDir, 'sessions.sqlite'),
+    clock: clockOf(deps),
+    ids: realIds,
+    secrets: [credential(deps) ?? undefined],
+  });
+}
+
+/** Load the run authority (the managed ceiling) for a durable-work command, honouring `--profile`. */
+function authorityForCommand(
+  deps: CliDeps,
+  flags: Record<string, string>,
+): ReturnType<typeof loadRunAuthority> {
+  const cliOverrides: Record<string, unknown> = {};
+  if (flags['profile'] !== undefined) {
+    const requested = resolveProfile(flags['profile']);
+    if (requested !== undefined) cliOverrides['permissionProfile'] = requested;
+  }
+  return loadRunAuthority({
+    projectRoot: deps.cwd,
+    homeDir: homedir(),
+    env: deps.env,
+    cli: cliOverrides,
+    ...(deps.managedPath ? { managedPath: deps.managedPath } : {}),
+  });
+}
+
+function ensureThread(
+  store: EventStore,
+  threadId: ThreadId,
+  deps: CliDeps,
+  profile: PermissionProfile,
+): void {
+  if (store.getThread(threadId) !== undefined) return;
+  store.append({
+    threadId,
+    correlationId: realIds.next('cor') as CorrelationId,
+    permissionProfile: profile,
+    actor: CLI_SYSTEM,
+    payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
+  });
+}
+
+/** Split a token list at the first bare `--`: everything after it is a literal command + argv. */
+function splitDoubleDash(args: readonly string[]): { pre: string[]; post: string[] } {
+  const idx = args.indexOf('--');
+  if (idx === -1) return { pre: [...args], post: [] };
+  return { pre: args.slice(0, idx), post: args.slice(idx + 1) };
+}
+
+/** `task ...` — the durable dependency graph plus the ephemeral todo normalizer (WK-01..WK-08). */
+function taskCommand(deps: CliDeps, args: readonly string[]): number {
+  const { flags, positional } = parseFlags(args);
+  const asJson = 'json' in flags;
+  const [sub, ...rest] = positional;
+
+  // `task todo` is turn-local working memory — no store, no persistence (WK-01/WK-02).
+  if (sub === 'todo') {
+    const json = rest.join(' ').trim();
+    if (json.length === 0) {
+      deps.stderr("task todo: a JSON array of todos is required (e.g. task todo '[{...}]')");
+      return 1;
+    }
+    try {
+      const parsed: unknown = JSON.parse(json);
+      if (!Array.isArray(parsed)) throw new Error('todo input must be a JSON array');
+      const projection = normalizeTodos(parsed as never);
+      deps.stdout(JSON.stringify(projection));
+      return 0;
+    } catch (e) {
+      deps.stderr(`task todo: ${e instanceof Error ? e.message : String(e)}`);
+      return 1;
+    }
+  }
+
+  const store = openStore(deps);
+  try {
+    const graph = openTaskGraph(store, clockOf(deps));
+    switch (sub) {
+      case 'create': {
+        const subject = rest.join(' ').trim();
+        const activeForm = flags['active'];
+        if (subject.length === 0 || activeForm === undefined) {
+          deps.stderr('task create: a subject and --active <activeForm> are required');
+          return 1;
+        }
+        const blockedBy =
+          flags['blocked-by'] !== undefined
+            ? flags['blocked-by']
+                .split(',')
+                .map((s) => Number(s.trim()))
+                .filter((n) => Number.isInteger(n))
+            : [];
+        const task = createTask(graph, {
+          subject,
+          activeForm,
+          ...(flags['desc'] !== undefined ? { description: flags['desc'] } : {}),
+          ...(blockedBy.length > 0 ? { blockedBy } : {}),
+        });
+        deps.stdout(asJson ? JSON.stringify(task) : renderTask(task));
+        return 0;
+      }
+      case 'list': {
+        const tasks = listTasks(graph, 'all' in flags);
+        if (asJson) {
+          deps.stdout(JSON.stringify({ tasks }));
+          return 0;
+        }
+        if (tasks.length === 0) deps.stdout('no tasks');
+        for (const task of tasks) deps.stdout(renderTask(task));
+        return 0;
+      }
+      case 'get': {
+        const id = Number(rest[0]);
+        const task = Number.isInteger(id) ? getTask(graph, id) : undefined;
+        if (task === undefined) {
+          deps.stderr(`task get: no such task ${rest[0]}`);
+          return 1;
+        }
+        deps.stdout(asJson ? JSON.stringify(task) : renderTask(task));
+        return 0;
+      }
+      case 'claim': {
+        const id = Number(rest[0]);
+        const owner = flags['owner'];
+        if (!Number.isInteger(id) || owner === undefined) {
+          deps.stderr('task claim: a task id and --owner <name> are required');
+          return 1;
+        }
+        const result = claimTask(graph, id, owner);
+        if (!result.ok) {
+          deps.stdout(asJson ? JSON.stringify(result) : `claim failed: ${result.reason}`);
+          return 3;
+        }
+        deps.stdout(asJson ? JSON.stringify(result.task) : renderTask(result.task));
+        return 0;
+      }
+      case 'start':
+      case 'release': {
+        const id = Number(rest[0]);
+        if (!Number.isInteger(id)) {
+          deps.stderr(`task ${sub}: a task id is required`);
+          return 1;
+        }
+        const task = sub === 'start' ? startTask(graph, id) : releaseTask(graph, id);
+        deps.stdout(asJson ? JSON.stringify(task) : renderTask(task));
+        return 0;
+      }
+      case 'complete':
+      case 'delete': {
+        const id = Number(rest[0]);
+        if (!Number.isInteger(id)) {
+          deps.stderr(`task ${sub}: a task id is required`);
+          return 1;
+        }
+        const result = sub === 'complete' ? completeTask(graph, id) : deleteTask(graph, id);
+        if (asJson) {
+          deps.stdout(JSON.stringify(result));
+        } else {
+          deps.stdout(renderTask(result.task));
+          for (const t of result.newlyUnblocked) deps.stdout(`  unblocked ${renderTask(t)}`);
+        }
+        return 0;
+      }
+      default:
+        deps.stderr('task: expected create|list|get|claim|start|complete|release|delete|todo');
+        return 1;
+    }
+  } catch (e) {
+    // A domain rejection (illegal transition, cycle, missing reference) is a user error, not a crash.
+    deps.stderr(`task: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  } finally {
+    store.close();
+  }
+}
+
+/** `background ...` — start a sandboxed background task and inspect durable results (BG-01..BG-06). */
+async function backgroundCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
+  const { pre, post } = splitDoubleDash(args);
+  const { flags, positional } = parseFlags(pre);
+  const asJson = 'json' in flags;
+  const [sub, ...rest] = positional;
+  const store = openStore(deps);
+
+  try {
+    if (sub === 'start') {
+      const category = flags['category'] ?? 'local-shell';
+      if (!isBackgroundCategory(category)) {
+        deps.stderr(`background start: unknown category "${category}"`);
+        return 1;
+      }
+      const [command, ...argv] = post;
+      if (command === undefined) {
+        deps.stderr('background start: a command is required after `--` (e.g. -- node -e "…")');
+        return 1;
+      }
+      const authority = authorityForCommand(deps, flags);
+      const threadId = (flags['thread'] ?? BACKGROUND_THREAD) as ThreadId;
+      ensureThread(store, threadId, deps, authority.profile);
+
+      // The operator launched exactly this command, so its ceiling preapproves it for unattended,
+      // channel-less execution (CR-07). The managed ceiling still binds: a `plan` clamp seals shell.
+      const runAuthority = authorityOf(authority, deps.cwd, [preapprovalRule(command, argv)]);
+      const manager = createDurableBackgroundManager({
+        store,
+        threadId,
+        turnId: realIds.next('trn') as TurnId,
+        correlationId: realIds.next('cor') as CorrelationId,
+        permissionProfile: authority.profile,
+        actor: CLI_USER,
+        clock: clockOf(deps),
+        ids: realIds,
+        pipeline: buildBackgroundPipeline(),
+        homeDir: homedir(),
+      });
+
+      // A background task returns its id immediately (BG-02); a headless CLI then awaits its
+      // settlement so the invocation reports a concrete outcome. The durable sink has already
+      // recorded start and (on settle) completion, so the RESULT outlives this process.
+      const view = manager.start({
+        category,
+        owner: CLI_USER,
+        placement: 'background',
+        permissionContext: runAuthority,
+        payload: { command, argv, cwd: deps.cwd, authority: runAuthority },
+      });
+      const settled = await manager.awaitTask(view.id);
+
+      if (asJson) {
+        deps.stdout(
+          JSON.stringify({
+            taskId: settled.id,
+            category: settled.category,
+            threadId,
+            status: settled.status,
+            outputPreview: settled.outputPreview,
+            exit: settled.exit,
+          }),
+        );
+      } else {
+        deps.stdout(`${settled.id}  [${settled.status}]  category=${settled.category}`);
+        if (settled.outputPreview) deps.stdout(settled.outputPreview.trimEnd());
+      }
+      return settled.status === 'succeeded' ? 0 : 2;
+    }
+
+    if (sub === 'list') {
+      const threadId = (flags['thread'] ?? BACKGROUND_THREAD) as ThreadId;
+      const records = listDurableBackground(store, threadId);
+      if (asJson) {
+        deps.stdout(JSON.stringify({ threadId, tasks: records }));
+        return 0;
+      }
+      if (records.length === 0) deps.stdout('no background tasks on this thread');
+      for (const r of records) deps.stdout(`${r.taskId}  [${r.state}]  category=${r.category}`);
+      return 0;
+    }
+
+    if (sub === 'status') {
+      const taskId = rest[0];
+      const threadId = (flags['thread'] ?? BACKGROUND_THREAD) as ThreadId;
+      if (taskId === undefined) {
+        deps.stderr('background status: a task id is required');
+        return 1;
+      }
+      const record = listDurableBackground(store, threadId).find((r) => r.taskId === taskId);
+      if (record === undefined) {
+        deps.stderr(`background status: no task ${taskId} on ${threadId}`);
+        return 1;
+      }
+      deps.stdout(asJson ? JSON.stringify(record) : `${record.taskId}  [${record.state}]`);
+      return 0;
+    }
+
+    if (sub === 'cancel') {
+      const taskId = rest[0];
+      const threadId = (flags['thread'] ?? BACKGROUND_THREAD) as ThreadId;
+      if (taskId === undefined) {
+        deps.stderr('background cancel: a task id is required');
+        return 1;
+      }
+      const record = listDurableBackground(store, threadId).find((r) => r.taskId === taskId);
+      if (record === undefined) {
+        deps.stderr(`background cancel: no task ${taskId} on ${threadId}`);
+        return 1;
+      }
+      // A CLI process cannot signal a task hosted by an already-exited process (BG-07: the process
+      // and the record are distinct lifetimes). What it CAN do is settle the DURABLE record: a task
+      // still `in-flight` is cancelled by recording a terminal failure by its own side-effect id, so
+      // it is no longer counted as running. An `indeterminate` task (a crash we cannot judge) is left
+      // to the sanctioned `side-effects` inspection path (SS-05); a settled task is already done.
+      if (record.state === 'in-flight') {
+        const thread = store.getThread(threadId);
+        store.append({
+          threadId,
+          turnId: realIds.next('trn') as TurnId,
+          correlationId: realIds.next('cor') as CorrelationId,
+          permissionProfile: thread?.permissionProfile ?? 'plan',
+          actor: CLI_USER,
+          payload: {
+            type: 'side-effect-settled',
+            sideEffectId: record.sideEffectId as SideEffectId,
+            state: 'known-failed',
+            resultDigest: null,
+          },
+        });
+        deps.stdout(asJson ? JSON.stringify({ taskId, cancelled: true }) : `${taskId} cancelled`);
+        return 0;
+      }
+      deps.stdout(
+        asJson
+          ? JSON.stringify({ taskId, cancelled: false, state: record.state })
+          : `${taskId} is ${record.state}; not cancellable from a one-shot CLI`,
+      );
+      return 0;
+    }
+
+    deps.stderr('background: expected start|list|status|cancel');
+    return 1;
+  } catch (e) {
+    deps.stderr(`background: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
+  } finally {
+    store.close();
+  }
+}
+
+/** `cron ...` — durable Cron jobs and the single-poll supervisor (CR-01..CR-07). */
+async function cronCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
+  const { pre, post } = splitDoubleDash(args);
+  const { flags, positional } = parseFlags(pre);
+  const asJson = 'json' in flags;
+  const [sub, ...rest] = positional;
+  const store = openStore(deps);
+
+  try {
+    const authority = authorityForCommand(deps, flags);
+    const ctx = openScheduler({
+      store,
+      ids: realIds,
+      clock: clockOf(deps),
+      permissionProfile: authority.profile,
+      workspaceRoot: deps.cwd,
+    });
+
+    switch (sub) {
+      case 'add': {
+        const owner = flags['owner'] ?? 'cli';
+        const threadId = (flags['thread'] ?? SCHEDULER_THREAD_ID) as ThreadId;
+        ensureThread(store, threadId, deps, authority.profile);
+        const tag = flags['tag'] ?? 'cli-cron';
+        const [command, ...argv] = post;
+        // A scheduled command is preapproved for unattended execution (CR-07); the ceiling still binds.
+        const ceiling = authorityOf(
+          authority,
+          deps.cwd,
+          command !== undefined ? [preapprovalRule(command, argv)] : [],
+        );
+
+        if (flags['recurring'] !== undefined) {
+          try {
+            parseCron(flags['recurring']);
+          } catch (e) {
+            deps.stderr(
+              `cron add: invalid expression: ${e instanceof Error ? e.message : String(e)}`,
+            );
+            return 1;
+          }
+          const job = addCron(ctx, {
+            kind: 'recurring',
+            cronExpr: flags['recurring'],
+            owner,
+            threadId,
+            tag,
+            command: command ?? null,
+            argv,
+            authorityCeiling: ceiling,
+          });
+          deps.stdout(
+            asJson ? JSON.stringify(job) : `${job.id}  recurring "${flags['recurring']}"`,
+          );
+          return 0;
+        }
+
+        // One-shot: an absolute `--at <epoch-ms>` or a relative `--in <seconds>` from `now`.
+        let fireAt: number | undefined;
+        if (flags['at'] !== undefined) fireAt = Number(flags['at']);
+        else if (flags['in'] !== undefined) fireAt = deps.now() + Number(flags['in']) * 1000;
+        if (fireAt === undefined || !Number.isFinite(fireAt)) {
+          deps.stderr('cron add: --recurring "<expr>" or --one-shot with --at <ms> / --in <sec>');
+          return 1;
+        }
+        const job = addCron(ctx, {
+          kind: 'one-shot',
+          fireAt,
+          owner,
+          threadId,
+          tag,
+          command: command ?? null,
+          argv,
+          authorityCeiling: ceiling,
+        });
+        deps.stdout(asJson ? JSON.stringify(job) : `${job.id}  one-shot @ ${fireAt}`);
+        return 0;
+      }
+
+      case 'list': {
+        const items = listCron(ctx, deps.now());
+        if (asJson) {
+          deps.stdout(JSON.stringify({ jobs: items }));
+          return 0;
+        }
+        if (items.length === 0) deps.stdout('no cron jobs');
+        for (const j of items) {
+          const when = j.kind === 'recurring' ? `"${j.cronSource}"` : `@ ${j.fireAt}`;
+          deps.stdout(`${j.id}  [${j.status}]  ${j.kind} ${when}  -> ${j.threadId}`);
+        }
+        return 0;
+      }
+
+      case 'remove': {
+        const id = rest[0];
+        if (id === undefined) {
+          deps.stderr('cron remove: a job id is required');
+          return 1;
+        }
+        const removed = ctx.scheduler.delete(id);
+        deps.stdout(
+          asJson
+            ? JSON.stringify({ id, removed })
+            : removed
+              ? `removed ${id}`
+              : `no such job ${id}`,
+        );
+        return removed ? 0 : 1;
+      }
+
+      case 'run': {
+        // A crash during an earlier fire leaves an in-flight ledger row; surface it as indeterminate
+        // before polling, exactly as `run` does, so a stuck fire is visible rather than silently stuck.
+        store.recoverInterrupted();
+        const now = flags['now'] !== undefined ? Number(flags['now']) : deps.now();
+        if (!Number.isFinite(now)) {
+          deps.stderr('cron run: --now must be an epoch-ms instant');
+          return 1;
+        }
+        const result = await runSupervisor(ctx, {
+          now,
+          managed: authority.managedPolicy,
+          homeDir: homedir(),
+          workspaceRoot: deps.cwd,
+        });
+        if (asJson) {
+          deps.stdout(JSON.stringify(result));
+        } else {
+          deps.stdout(`fired ${result.fired.length} job(s) as of ${now}`);
+          for (const f of result.fired) {
+            deps.stdout(
+              `  ${f.jobId} -> ${f.threadId}  instant=${f.scheduledInstant}  ` +
+                `profile=${f.effectiveProfile}  ${f.executed ? (f.ok ? 'ok' : `failed: ${f.detail ?? ''}`) : 'already-fired'}`,
+            );
+          }
+        }
+        return 0;
+      }
+
+      default:
+        deps.stderr('cron: expected add|list|remove|run');
+        return 1;
+    }
+  } catch (e) {
+    deps.stderr(`cron: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
   } finally {
     store.close();
   }

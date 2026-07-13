@@ -34,7 +34,10 @@
     "@qwen-harness/skills": "workspace:*",
     "@qwen-harness/memory": "workspace:*",
     "@qwen-harness/mcp": "workspace:*",
-    "@qwen-harness/context": "workspace:*"
+    "@qwen-harness/context": "workspace:*",
+    "@qwen-harness/tasks": "workspace:*",
+    "@qwen-harness/background": "workspace:*",
+    "@qwen-harness/scheduler": "workspace:*"
   },
   "bin": {
     "qwen-harness": "./dist/bin.js"

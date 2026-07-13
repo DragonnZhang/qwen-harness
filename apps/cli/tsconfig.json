@@ -25,6 +25,9 @@
     { "path": "../../packages/skills" },
     { "path": "../../packages/memory" },
     { "path": "../../packages/mcp" },
-    { "path": "../../packages/context" }
+    { "path": "../../packages/context" },
+    { "path": "../../packages/tasks" },
+    { "path": "../../packages/background" },
+    { "path": "../../packages/scheduler" }
   ]
 }
