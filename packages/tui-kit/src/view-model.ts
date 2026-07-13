@@ -203,11 +203,46 @@ export function applyItem(state: TranscriptState, item: Item): TranscriptState {
   return { rows, activeId };
 }
 
-/** Fold a whole sequence of items — the common "rebuild from history" path. */
+/**
+ * Fold a whole sequence of items — the common "rebuild from history" path.
+ *
+ * This does NOT simply fold `applyItem`, and that is the point. `applyItem` is correct for the
+ * INCREMENTAL case: it copies the row array so each state is immutable, and it looks up the target
+ * row with a linear scan. Both are fine for one item. Folding it over a whole history makes each of
+ * them quadratic, and the performance gate caught exactly that — rebuilding a 10,000-row transcript
+ * took **17.8 seconds**, which is what a user resuming a long session would have sat through before
+ * seeing a single row. Nothing in the per-frame numbers hinted at it; the frame cost was 1.2 ms.
+ *
+ * So the bulk path accumulates once: a single array, and a Map from row id to position so an update
+ * to an existing row is O(1) instead of a scan. The observable semantics are identical to folding
+ * `applyItem`, and `view-model.test.ts` asserts that equivalence on a real item sequence so the two
+ * can never drift apart.
+ */
 export function buildTranscript(items: Iterable<Item>): TranscriptState {
-  let state = EMPTY_TRANSCRIPT;
-  for (const item of items) state = applyItem(state, item);
-  return state;
+  const rows: TranscriptRow[] = [];
+  const positionById = new Map<string, number>();
+  let activeId: string | null = null;
+
+  for (const item of items) {
+    const built = buildRow(item);
+    const at = positionById.get(built.id);
+    if (at !== undefined) {
+      rows[at] = built;
+    } else {
+      positionById.set(built.id, rows.length);
+      rows.push(built);
+    }
+
+    // Identical to `applyItem`: a live row becomes active; a completed row that finalises the
+    // current active one clears it.
+    if (!built.completed) {
+      activeId = built.id;
+    } else if (activeId === built.id) {
+      activeId = null;
+    }
+  }
+
+  return { rows, activeId };
 }
 
 // ---------------------------------------------------------------------------------------------

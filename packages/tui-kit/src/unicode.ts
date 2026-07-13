@@ -57,26 +57,67 @@ function isRegionalIndicator(cp: number): boolean {
 }
 
 /**
+ * The lowest codepoint that can possibly be a combining mark (`\p{M}` begins at U+0300) or a
+ * zero-width format character. Below this, the answer to "does it combine?" and "is it zero
+ * width?" is always no — with the single exception of U+00AD SOFT HYPHEN, which is `\p{Cf}`.
+ *
+ * This constant is the whole optimization, and it matters because the fixture in
+ * `test/performance` caught the original code taking 217 ms to width-measure an 18 KB payload —
+ * four times the entire per-frame budget. The reason was mundane: `stringWidth` ran TWO Unicode
+ * property regexes plus a linear scan of 26 ranges for every grapheme, so ordinary ASCII text paid
+ * the full cost of Unicode on every single character. Real transcripts are overwhelmingly ASCII.
+ *
+ * Nothing about the semantics changes — the slow path below is still the authority, and the
+ * property tests compare against it. This only skips work that provably cannot matter.
+ */
+const BELOW_COMBINING = 0x0300;
+const SOFT_HYPHEN = 0x00ad;
+/** Nothing below the first Hangul Jamo is ever double-width. */
+const BELOW_WIDE = 0x1100;
+
+// Hoisted so they are compiled once, not re-evaluated on every call.
+const COMBINING_MARK = /\p{M}/u;
+const ZERO_WIDTH = /\p{M}|\p{Cf}/u;
+
+/**
  * A codepoint that binds to the preceding base rather than starting a new grapheme: any Unicode
  * combining mark (`\p{M}`), a variation selector, or an emoji skin-tone modifier.
  */
 function isExtend(ch: string): boolean {
   const cp = ch.codePointAt(0);
   if (cp === undefined) return false;
+  // Fast path: no codepoint below U+0300 is a combining mark, a selector, or a modifier.
+  if (cp < BELOW_COMBINING) return false;
   if (cp >= 0xfe00 && cp <= 0xfe0f) return true; // variation selectors
   if (cp >= 0xe0100 && cp <= 0xe01ef) return true; // variation selectors supplement
   if (cp >= 0x1f3fb && cp <= 0x1f3ff) return true; // emoji modifiers (skin tone)
-  return /\p{M}/u.test(ch); // Mn / Mc / Me combining marks
+  return COMBINING_MARK.test(ch); // Mn / Mc / Me combining marks
 }
 
 /** True for a codepoint that occupies no terminal cell of its own. */
 function isZeroWidth(ch: string): boolean {
-  return /\p{M}|\p{Cf}/u.test(ch);
+  const cp = ch.codePointAt(0);
+  if (cp === undefined) return false;
+  if (cp < BELOW_COMBINING && cp !== SOFT_HYPHEN) return false;
+  return ZERO_WIDTH.test(ch);
 }
 
+/**
+ * Binary search over the sorted, non-overlapping wide ranges. The list is ordered by construction;
+ * `unicode.test.ts` asserts that ordering, so a future range added out of order fails the test
+ * rather than silently making a CJK character measure one cell wide.
+ */
 function isWideCodePoint(cp: number): boolean {
-  for (const [lo, hi] of WIDE_RANGES) {
-    if (cp >= lo && cp <= hi) return true;
+  if (cp < BELOW_WIDE) return false;
+  let lo = 0;
+  let hi = WIDE_RANGES.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const range = WIDE_RANGES[mid];
+    if (range === undefined) return false;
+    if (cp < range[0]) hi = mid - 1;
+    else if (cp > range[1]) lo = mid + 1;
+    else return true;
   }
   return false;
 }
@@ -151,11 +192,83 @@ export function graphemeWidth(grapheme: string): number {
   return isWideCodePoint(cp) ? 2 : 1;
 }
 
-/** Total terminal cell width of a string, summed over its graphemes. */
+/**
+ * Total terminal cell width of a string, summed over its graphemes.
+ *
+ * This walks codepoints directly instead of `toGraphemes(text).map(graphemeWidth)`. The old form
+ * allocated one short-lived string per grapheme — roughly 10,000 of them for a single 18 KB
+ * payload — and the allocation, not the arithmetic, was the cost. It is the hottest function in the
+ * TUI (every frame measures every visible line), and the performance gate caught it eating the
+ * entire per-frame budget on its own.
+ *
+ * The cluster rules below mirror `toGraphemes` exactly, and only a cluster's BASE codepoint
+ * contributes width — which is precisely what `graphemeWidth` does, since it reads the first
+ * codepoint of the cluster. `unicode.test.ts` asserts the two agree on random and adversarial
+ * strings, so this fast path can never silently drift from the readable one.
+ */
 export function stringWidth(text: string): number {
   let width = 0;
-  for (const g of toGraphemes(text)) width += graphemeWidth(g);
+  let inCluster = false;
+  let prevWasZwj = false;
+  let openRegional = false;
+
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0;
+
+    // Printable ASCII — the overwhelming majority of real transcript text. One cell, always a new
+    // cluster, and provably neither an extender nor wide, so nothing below needs to run.
+    //
+    // `!prevWasZwj` is load-bearing and was missing at first: a ZWJ glues whatever FOLLOWS it into
+    // the current cluster, including a plain ASCII letter, so `x<ZWJ>y` is ONE grapheme one cell
+    // wide. Taking the fast path there counted `y` as a second cluster and returned 2. The
+    // equivalence test against `toGraphemes`/`graphemeWidth` caught it — which is the entire reason
+    // a hand-rolled fast path must be pinned to the readable implementation rather than trusted.
+    if (cp >= 0x20 && cp < 0x7f && !prevWasZwj) {
+      width += 1;
+      inCluster = true;
+      prevWasZwj = false;
+      openRegional = false;
+      continue;
+    }
+
+    if (!inCluster) {
+      width += widthOfCodePoint(cp, ch);
+      inCluster = true;
+      prevWasZwj = cp === ZWJ;
+      openRegional = isRegionalIndicator(cp);
+      continue;
+    }
+
+    // Extenders, ZWJ-glued parts, and the second half of a flag all join the current cluster and
+    // contribute no width of their own.
+    if (isExtend(ch) || cp === ZWJ) {
+      prevWasZwj = cp === ZWJ;
+      openRegional = false;
+      continue;
+    }
+    if (prevWasZwj) {
+      prevWasZwj = false;
+      openRegional = isRegionalIndicator(cp);
+      continue;
+    }
+    if (openRegional && isRegionalIndicator(cp)) {
+      openRegional = false;
+      continue;
+    }
+
+    // Anything else begins a new cluster, and a new cluster is what costs cells.
+    width += widthOfCodePoint(cp, ch);
+    prevWasZwj = cp === ZWJ;
+    openRegional = isRegionalIndicator(cp);
+  }
+
   return width;
+}
+
+/** The width a cluster's base codepoint contributes. Shared by `graphemeWidth` and `stringWidth`. */
+function widthOfCodePoint(cp: number, ch: string): number {
+  if (isZeroWidth(ch)) return 0;
+  return isWideCodePoint(cp) ? 2 : 1;
 }
 
 /** Join a slice of a grapheme array back into a string (`from` inclusive, `to` exclusive). */

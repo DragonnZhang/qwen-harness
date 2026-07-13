@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Item, ItemId, ThreadId, TurnId } from '@qwen-harness/protocol';
+
 import {
   activeRow,
   applyItem,
   buildTranscript,
   completedRows,
   EMPTY_TRANSCRIPT,
+  type TranscriptState,
 } from './view-model.ts';
 
 /**
@@ -119,5 +122,65 @@ describe('transcript view models (UI-01/UI-02)', () => {
     const second = applyItem(first, user('u2', 'b'));
     expect(first.rows).toHaveLength(1);
     expect(second.rows).toHaveLength(2);
+  });
+});
+
+/**
+ * `buildTranscript` no longer folds `applyItem` — it accumulates in one pass with a Map index,
+ * because folding the immutable per-item path was quadratic and cost 17.8 seconds to rebuild a
+ * 10,000-row transcript. That makes it a SECOND implementation of the same state machine, so it is
+ * pinned to the first one here. If they ever disagree, this fails rather than a user seeing a
+ * subtly wrong transcript after resuming a session.
+ */
+describe('buildTranscript equals folding applyItem', () => {
+  function fold(items: readonly Item[]): TranscriptState {
+    let state = EMPTY_TRANSCRIPT;
+    for (const item of items) state = applyItem(state, item);
+    return state;
+  }
+
+  const THREAD = 'thr_eq0001' as ThreadId;
+  const TURN = 'trn_eq0001' as TurnId;
+  const mk = (seq: number, extra: Record<string, unknown>): Item =>
+    ({
+      id: `itm_eq${String(seq).padStart(5, '0')}` as ItemId,
+      turnId: TURN,
+      threadId: THREAD,
+      seq,
+      createdAt: 1_700_000_000_000,
+      ...extra,
+    }) as Item;
+
+  it('agrees on a sequence with streaming updates, re-emitted ids, and completion', () => {
+    // The interesting cases: a row updated in place (same id, streaming), a row that completes and
+    // clears `activeId`, and rows that arrive after it.
+    const streamingId = 'itm_eq00002';
+    const items: Item[] = [
+      mk(1, { type: 'user-message', text: 'hello' }),
+      mk(2, { type: 'assistant-message', text: 'par', complete: false }),
+      {
+        ...mk(2, { type: 'assistant-message', text: 'partial', complete: false }),
+        id: streamingId as ItemId,
+      },
+      {
+        ...mk(2, { type: 'assistant-message', text: 'partial answer', complete: true }),
+        id: streamingId as ItemId,
+      },
+      mk(3, { type: 'user-message', text: 'thanks' }),
+      mk(4, { type: 'assistant-message', text: 'still going', complete: false }),
+    ];
+
+    const folded = fold(items);
+    const built = buildTranscript(items);
+
+    expect(built.rows).toEqual(folded.rows);
+    expect(built.activeId).toEqual(folded.activeId);
+    // Sanity: the sequence actually exercised the update-in-place and active-clearing paths.
+    expect(folded.rows.length).toBeLessThan(items.length);
+    expect(built.activeId).not.toBeNull();
+  });
+
+  it('agrees on an empty sequence', () => {
+    expect(buildTranscript([])).toEqual(fold([]));
   });
 });

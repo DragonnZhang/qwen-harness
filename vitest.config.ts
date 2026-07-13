@@ -85,6 +85,13 @@ export default defineConfig({
             'apps/*/test/performance/**/*.test.ts',
           ],
           testTimeout: 300_000,
+          // A benchmark that shares 2 vCPUs with other test files is measuring the scheduler, not
+          // the code. Timings taken under contention are meaningless in both directions: they hide
+          // regressions on an idle box and invent them on a busy one. The flake policy forbids
+          // retry-to-pass, so we remove the contention instead of tolerating the noise.
+          fileParallelism: false,
+          maxWorkers: 1,
+          minWorkers: 1,
         },
       },
       {
@@ -93,6 +100,21 @@ export default defineConfig({
           name: 'migrations',
           include: ['packages/*/test/migrations/**/*.test.ts'],
           testTimeout: 60_000,
+        },
+      },
+      {
+        test: {
+          ...shared,
+          name: 'packaging',
+          include: ['packaging/test/**/*.test.ts'],
+          // The lifecycle suite compiles the workspace, bundles the CLI, builds a real tarball and
+          // installs it into a temp prefix. That is slow, and it is the only test that proves the
+          // artifact we actually ship works on a machine that is not this one.
+          testTimeout: 300_000,
+          hookTimeout: 300_000,
+          // These tests install into prefixes and build into `dist/release/`. Running the files in
+          // parallel would have them racing over the same staging directory.
+          fileParallelism: false,
         },
       },
     ],
