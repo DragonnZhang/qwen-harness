@@ -8,7 +8,13 @@ import type {
   ToolCallId,
   TurnId,
 } from '@qwen-harness/protocol';
-import { MODEL_ACTOR, SequentialIds, USER_ACTOR, ManualClock } from '@qwen-harness/testkit';
+import {
+  CANARY_API_KEY,
+  MODEL_ACTOR,
+  SequentialIds,
+  USER_ACTOR,
+  ManualClock,
+} from '@qwen-harness/testkit';
 
 import {
   EventStore,
@@ -451,15 +457,20 @@ describe('EventStore: offloaded blobs (TL-10 / CX-02)', () => {
   });
 
   it('redacts a configured secret inside offloaded content before it lands', () => {
+    // Use the runtime-assembled canary, never a key-shaped literal. No source file may CONTAIN a
+    // credential-shaped string — not even in a comment — because that is what lets
+    // `scripts/secret-scan.ts` stay strict with zero allowlist, and an allowlist is exactly the
+    // mechanism that later hides a real leak. A hard-coded fake key here tripped the scanner
+    // correctly; this comment must not reintroduce one by quoting it.
     const store = new EventStore({
       path: ':memory:',
       clock: new ManualClock(1_700_000_000_000),
       ids: new SequentialIds(),
-      secrets: ['sk-super-secret-value'],
+      secrets: [CANARY_API_KEY],
     });
-    store.putBlob('blb_secret', 'prefix sk-super-secret-value suffix');
+    store.putBlob('blb_secret', `prefix ${CANARY_API_KEY} suffix`);
     const stored = store.readBlob('blb_secret');
-    expect(stored).not.toContain('sk-super-secret-value');
+    expect(stored).not.toContain(CANARY_API_KEY);
     expect(stored).toContain('prefix');
     expect(stored).toContain('suffix');
   });
