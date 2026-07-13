@@ -75,7 +75,7 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 | TL-10 | Oversized output is sanitized, durably offloaded, and represented by a bounded preview plus a retrievable reference. | U,I,S,E | REQUIRED |
 | TL-11 | ANSI, OSC, terminal title, clipboard, hyperlink, and control-sequence content from tools is untrusted and cannot forge TUI chrome or approvals. | U,P,S,T | IN_PROGRESS |
 | TL-12 | Tool results use a stable success/error shape with machine-readable categories, user-safe text, model-safe text, provenance, duration, truncation, and audit identity. | U,I | IN_PROGRESS |
-| TL-13 | Permissioned WebFetch and WebSearch validate schemes/domains/redirects/content types, limit downloads, respect network policy, sanitize untrusted content, and have a real configured provider or provider-native path plus local fixtures. | U,P,I,S,E,L | REQUIRED |
+| TL-13 | Permissioned WebFetch and WebSearch validate schemes/domains/redirects/content types, limit downloads, respect network policy, sanitize untrusted content, and have a real configured provider or provider-native path plus local fixtures. | U,P,I,S,E,L | IN_PROGRESS |
 | TL-14 | Every model, repository, tool, hook, MCP, web, Markdown-link, and provider string crosses one `UntrustedText` sanitizer before TUI/log/export; only typed trusted-chrome values can affect terminal controls. | U,P,I,S,T | IN_PROGRESS |
 
 ## D. Permission profiles, policy, and hooks
@@ -127,9 +127,9 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| AG-01 | One-shot subagents have independent history, explicit prompt/context/tool/model/budget/permission identity, shared or isolated workspace policy, and return a bounded conclusion. | U,I,E,L | REQUIRED |
+| AG-01 | One-shot subagents have independent history, explicit prompt/context/tool/model/budget/permission identity, shared or isolated workspace policy, and return a bounded conclusion. | U,I,E,L | IN_PROGRESS |
 | AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | REQUIRED |
-| AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | REQUIRED |
+| AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | IN_PROGRESS |
 | AG-04 | A subagent can be resumed by identity and retains its own compacted history, while ordinary completion returns only an attributed summary to the parent. | U,I,F,E | REQUIRED |
 | AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | REQUIRED |
 | AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | REQUIRED |
@@ -220,11 +220,11 @@ Sources: [s18](https://learn.shareai.run/en/s18/) and [Claude Code worktrees](ht
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | GT-01 | Create an isolated worktree and branch from a validated base with collision-safe name/slug and no path traversal. | U,P,I,S | IN_PROGRESS |
-| GT-02 | Enter/exit worktree for a session and cwd override for agents/teammates are distinct; every tool resolves against its assigned worktree. | U,I,E | REQUIRED |
+| GT-02 | Enter/exit worktree for a session and cwd override for agents/teammates are distinct; every tool resolves against its assigned worktree. | U,I,E | IN_PROGRESS |
 | GT-03 | Persist original cwd/branch/head, worktree path/branch/base, owner/session, and recovery state. | U,I,F | IN_PROGRESS |
 | GT-04 | Keep and remove are explicit. Removal refuses dirty/unpushed work by default; discard requires exact approval and produces an audit event. | U,I,S,T | IN_PROGRESS |
-| GT-05 | Task-worktree binding is optional metadata and never silently changes task state; agent task ownership and workspace ownership remain independently recoverable. | U,P,I,F | REQUIRED |
-| GT-06 | Create/remove/keep hooks, config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior are tested. | U,P,I,F,E | REQUIRED |
+| GT-05 | Task-worktree binding is optional metadata and never silently changes task state; agent task ownership and workspace ownership remain independently recoverable. | U,P,I,F | IN_PROGRESS |
+| GT-06 | Create/remove/keep hooks, config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior are tested. | U,P,I,F,E | IN_PROGRESS |
 
 ## L. MCP and external extension
 
@@ -238,7 +238,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 | MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | REQUIRED |
 | MC-05 | Managed-exclusive policy is the ceiling; otherwise MCP precedence is connector < plugin < user < approved project < local, with provenance and explicit project trust. | U,P,I,S,D | REQUIRED |
 | MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | REQUIRED |
-| MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | REQUIRED |
+| MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | IN_PROGRESS |
 | MC-08 | Server-to-agent notifications, elicitation, resources, prompts, reverse permission requests, and wake-up channels are attributed and policy checked. | U,I,F,S,E | REQUIRED |
 | MC-09 | Children inherit only approved MCP capabilities. Deferred schema refresh preserves the stable cache prefix; upfront-loaded schema content changes invalidate only their affected boundary, without leaking unavailable schemas. | U,P,I,S | REQUIRED |
 | MC-10 | Large output offload, tool search/lazy schema loading, monitor tasks, doctor UI, and per-server logs make MCP usable at scale. | U,I,T,E | REQUIRED |
@@ -293,7 +293,7 @@ These capabilities are required to make every timeline feature usable rather tha
 | OB-02 | Logs, metrics, trace, and current state are readable by humans and implementing agents through CLI/JSON; verbosity and retention are configurable and telemetry is opt-in. | U,I,S,D | IN_PROGRESS |
 | OB-03 | Doctor reports environment, config provenance, provider capabilities, credential presence without value, sandbox, terminal, Git, MCP, storage, migrations, and known degradation. | U,I,S,T,D | IN_PROGRESS |
 | SC-01 | Adversarial suite covers malicious repository instructions, secret exfiltration, path/symlink escape, shell indirection, package/Git hooks, MCP abuse, ANSI/OSC spoofing, approval confusion, and resource exhaustion. | P,I,S,E | REQUIRED |
-| SC-02 | Repository content is untrusted context and cannot elevate tools, policy, network, secret access, hooks, skills, or managed configuration. | U,P,I,S | REQUIRED |
+| SC-02 | Repository content is untrusted context and cannot elevate tools, policy, network, secret access, hooks, skills, or managed configuration. | U,P,I,S | IN_PROGRESS |
 | SC-03 | Audit records actor, normalized action, policy inputs, decision, grant scope, sandbox, result identity, and redacted errors for every side effect. | U,P,I,S | REQUIRED |
 | QL-01 | Root scripts provide format, lint, typecheck, unit, integration, security, PTY, E2E, live, build, architecture, and aggregate check gates. | I,E,D | IN_PROGRESS |
 | QL-02 | CI runs deterministic gates from a clean clone with locked dependencies, no network where avoidable, test sharding, artifacts, and failure diagnostics. | I,F,D | REQUIRED |
