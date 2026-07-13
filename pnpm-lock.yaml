@@ -567,6 +567,9 @@ importers:
       '@qwen-harness/tasks':
         specifier: workspace:*
         version: link:../tasks
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
