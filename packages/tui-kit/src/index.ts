@@ -19,7 +19,13 @@
  */
 
 // Unicode primitives (grapheme segmentation + terminal width).
-export { toGraphemes, graphemeCount, graphemeWidth, stringWidth, sliceGraphemes } from './unicode.ts';
+export {
+  toGraphemes,
+  graphemeCount,
+  graphemeWidth,
+  stringWidth,
+  sliceGraphemes,
+} from './unicode.ts';
 
 // Trusted chrome (the styled framing side of the trust boundary).
 export { chrome, ROW_LABELS, YOLO_BANNER } from './chrome.ts';

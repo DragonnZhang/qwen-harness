@@ -222,7 +222,11 @@ function toolText(text: string, maxLength: number): SafeText {
   return sanitize(text, { origin: 'tool', maxLength }).text;
 }
 
-function line(text: string, origin: 'model' | 'tool' | 'provider' | 'user', maxLength = 200): SafeText {
+function line(
+  text: string,
+  origin: 'model' | 'tool' | 'provider' | 'user',
+  maxLength = 200,
+): SafeText {
   return sanitize(text, { origin, multiline: false, maxLength }).text;
 }
 

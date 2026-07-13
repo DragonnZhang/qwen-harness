@@ -83,6 +83,8 @@ export class TranscriptInspector {
 
   /** The rows themselves that match `query`, in order — a filtered projection (UI-09). */
   filter(rows: readonly TranscriptRow[], query: string): TranscriptRow[] {
-    return this.search(rows, query).map((index) => rows[index]).filter((row): row is TranscriptRow => row !== undefined);
+    return this.search(rows, query)
+      .map((index) => rows[index])
+      .filter((row): row is TranscriptRow => row !== undefined);
   }
 }

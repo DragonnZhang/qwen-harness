@@ -205,7 +205,9 @@ function commit(
 
 /** Insert text at the cursor, replacing the selection first if one exists. Newlines are literal. */
 export function insertText(state: EditorState, text: string): EditorState {
-  const [start, end] = state.anchor ? ordered(state.anchor, state.cursor) : [state.cursor, state.cursor];
+  const [start, end] = state.anchor
+    ? ordered(state.anchor, state.cursor)
+    : [state.cursor, state.cursor];
   const next = replaceRange(state.lines, start, end, text);
   return commit(state, { ...next, anchor: null });
 }
@@ -363,7 +365,8 @@ export function moveWordRight(state: EditorState, select = false): EditorState {
   const graphemes = lineGraphemes(state, state.cursor.row);
   let i = state.cursor.col;
   if (i >= graphemes.length) {
-    if (state.cursor.row < lastRow(state)) return moveTo(state, { row: state.cursor.row + 1, col: 0 }, select);
+    if (state.cursor.row < lastRow(state))
+      return moveTo(state, { row: state.cursor.row + 1, col: 0 }, select);
     return moveTo(state, state.cursor, select);
   }
   while (i < graphemes.length && !isWordGrapheme(graphemes[i] ?? '')) i += 1;
@@ -376,7 +379,11 @@ export function moveWordLeft(state: EditorState, select = false): EditorState {
   let i = state.cursor.col;
   if (i <= 0) {
     if (state.cursor.row > 0) {
-      return moveTo(state, { row: state.cursor.row - 1, col: lineLen(state, state.cursor.row - 1) }, select);
+      return moveTo(
+        state,
+        { row: state.cursor.row - 1, col: lineLen(state, state.cursor.row - 1) },
+        select,
+      );
     }
     return moveTo(state, state.cursor, select);
   }
@@ -424,13 +431,20 @@ export function redo(state: EditorState): EditorState {
 function loadBuffer(state: EditorState, text: string, extra: Partial<EditorState>): EditorState {
   const lines = text.split('\n');
   const row = lines.length - 1;
-  return { ...state, lines, cursor: { row, col: graphemeCount(lines[row] ?? '') }, anchor: null, ...extra };
+  return {
+    ...state,
+    lines,
+    cursor: { row, col: graphemeCount(lines[row] ?? '') },
+    anchor: null,
+    ...extra,
+  };
 }
 
 /** Navigate to an older history entry (Ctrl-P / Up), stashing the live draft on first step. */
 export function historyPrev(state: EditorState): EditorState {
   if (state.history.length === 0) return state;
-  const index = state.historyIndex === null ? state.history.length - 1 : Math.max(0, state.historyIndex - 1);
+  const index =
+    state.historyIndex === null ? state.history.length - 1 : Math.max(0, state.historyIndex - 1);
   const draft = state.historyIndex === null ? bufferText(state) : state.draft;
   return loadBuffer(state, state.history[index] ?? '', { historyIndex: index, draft });
 }
@@ -459,7 +473,8 @@ export function historySearch(state: EditorState, query: string): HistoryMatch[]
   const matches: HistoryMatch[] = [];
   for (let i = state.history.length - 1; i >= 0; i -= 1) {
     const entry = state.history[i] ?? '';
-    if (needle === '' || entry.toLowerCase().includes(needle)) matches.push({ index: i, text: entry });
+    if (needle === '' || entry.toLowerCase().includes(needle))
+      matches.push({ index: i, text: entry });
   }
   return matches;
 }
@@ -477,7 +492,9 @@ function appendHistory(history: readonly string[], text: string, max: number): s
 export function submit(state: EditorState): { state: EditorState; submitted: string | null } {
   const text = bufferText(state);
   const isEmpty = text.length === 0;
-  const history = isEmpty ? [...state.history] : appendHistory(state.history, text, state.config.maxHistory);
+  const history = isEmpty
+    ? [...state.history]
+    : appendHistory(state.history, text, state.config.maxHistory);
   const next: EditorState = {
     ...state,
     lines: [''],

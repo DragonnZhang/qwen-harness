@@ -106,7 +106,10 @@ describe('transcript view models (UI-01/UI-02)', () => {
   });
 
   it('projects reasoning-status as a progress row without content', () => {
-    const status = base('reasoning-status', 'r1', { reasoningOccurred: true, reasoningTokens: 128 });
+    const status = base('reasoning-status', 'r1', {
+      reasoningOccurred: true,
+      reasoningTokens: 128,
+    });
     const state = applyItem(EMPTY_TRANSCRIPT, status);
     expect(state.rows[0]).toMatchObject({ kind: 'progress', tokens: 128, detail: null });
   });

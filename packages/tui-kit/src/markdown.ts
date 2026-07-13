@@ -146,7 +146,11 @@ export function parseInline(text: string): InlineSpan[] {
       if (isSafeLinkTarget(target)) {
         spans.push({ kind: 'link', text: safeModel(label), href: safeLinkTarget(target) });
       } else {
-        spans.push({ kind: 'unsafe-link', text: safeModel(label), rawTarget: safeLinkTarget(target) });
+        spans.push({
+          kind: 'unsafe-link',
+          text: safeModel(label),
+          rawTarget: safeLinkTarget(target),
+        });
       }
       rest = rest.slice(linkMatch[0].length);
       continue;
