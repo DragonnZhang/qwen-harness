@@ -16,10 +16,10 @@ Snapshot: 2026-07-13 (evening)
 | 04 sessions, recovery, CLI, TUI slice                            | **done** — CLI + TUI; UI-13 PTY restoration gate green (`3a60b6d`)       |
 | 05 instructions, skills, context, memory                         | **done** — skills+prompt modes (`a558f3e`); instructions/context wired   |
 | 06 todo, tasks, background, Cron, worktrees                      | **done** — tasks/background/cron wired; golden path 6 green (`686432e`)   |
-| 07 subagents, teams, protocols, autonomy                         | packages done; **teams NOT wired into any app** (blocks golden path 5)    |
+| 07 subagents, teams, protocols, autonomy                         | **done** — teams wired; golden path 5 green (`59d58f9`)                   |
 | 08 MCP and external extension                                    | **done** — mcp wired into CLI, shares policy ceiling (`a558f3e`)         |
 | 09 product completeness and release hardening                    | **PASSED** — `pnpm check` green from clean tree (`dd44dc1`), 1537 tests   |
-| 10 final integrated and live acceptance                          | golden paths 1,2,3,6,10 done; 4,5,7,8,9 remain; final audit not started   |
+| 10 final integrated and live acceptance                          | golden paths 1,2,3,4,5,6,10 done; **7,8,9 remain**; final audit not started |
 
 Live lane: **`LIVE_AVAILABLE`**. Three live tests pass against real `qwen3.7-max`: a provider smoke
 (streamed tool call + usage + request id, no secret in the trace), a full coding loop (the model
@@ -46,20 +46,25 @@ driving the compiled TUI bundle.
 
 ## What remains
 
-1. **Wire `teams`/`agents`/`worktrees` into an app** (golden path 5). The last big reachability
-   gap: lead creates dependent tasks, launches isolated teammates in worktrees, handles plan/
-   permission approvals, resolves concurrent claiming, receives background results, shuts down.
-   `tasks`/`background`/`scheduler` are now wired (path 6 done).
-2. **Golden paths still open:** 4 (long-context compaction — context IS wired and has an
-   integration test; needs the full golden-path E2E asserting goal/constraints/tasks/files/team-id/
-   permissions survive), 5 (teams), 7 (MCP end to end incl. HTTP transport + OAuth — HTTP needs a
-   POST-with-body egress the GET-only network broker lacks; that is a real package gap), 8 (TUI/PTY
-   full task with resize/approval/interrupt/resume), 9 (live model — needs credentials, may be
-   LIVE_BLOCKED). **Done: 1, 2, 3, 6, 10.**
-3. **`config.baseUrl` is not plumbed into the provider** (found by golden path 10). Loaded + shown
-   by doctor, ignored at runtime. Fix lets the installed binary target a non-live endpoint.
+**Golden paths done: 1, 2, 3, 4, 5, 6, 10 (seven of ten).** Open:
+
+1. **Path 7 — MCP end to end.** Local stdio MCP already works and is wired. The full path needs the
+   HTTP/SSE transport and OAuth-against-a-fixture-issuer. HTTP MCP needs a POST-with-body egress
+   primitive the GET-only `@qwen-harness/network` broker does not expose — **a real package gap**,
+   not just wiring. Both the HTTP transport and HTTP hooks are currently REJECTED at the schema
+   (honest), so closing this means extending the broker first.
+2. **Path 8 — TUI over PTY.** The UI-13 restoration gate already drives the compiled bundle under a
+   real PTY. The golden path is a full task: multiline Unicode input, resize, diff approval,
+   background panels, interrupt, session resume, restoration. Needs a driver connecting the TUI to a
+   live turn under node-pty.
+3. **Path 9 — Live model.** `qwen3.7-max` streams text+reasoning, multiple tools, survives a
+   retryable fault, reports usage, edits a fixture and passes its tests. Needs credentials
+   (`LIVE_AVAILABLE`); three live smoke tests already pass, so the lane works — this is the fuller
+   scripted live golden path.
 4. **The final audit (checkpoint 10).** Flip matrix rows to `VERIFIED` only where the declared
-   evidence exists. Produce the final report with commands, durations, evidence, commit IDs.
+   evidence exists. Produce the final report: exact commands, durations, evidence, commit IDs.
+
+`config.baseUrl` plumbing (found by path 10) is FIXED at `9774105`.
 
 ## Known honest gaps (do not paper over)
 
