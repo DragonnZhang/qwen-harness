@@ -6,6 +6,7 @@ import { resolveProfile, type CorrelationId, type ThreadId } from '@qwen-harness
 import { EventStore } from '@qwen-harness/storage';
 
 import { runDoctor } from './doctor.ts';
+import { exportSession, forkSession, listSessions, reconstructHistory } from './sessions.ts';
 import { createHarnessRuntime } from './wiring.ts';
 
 /**
@@ -43,6 +44,10 @@ export async function main(deps: CliDeps): Promise<number> {
     deps.stdout(
       '  run <prompt>           run one turn in the current workspace and print the result',
     );
+    deps.stdout('  sessions               list the sessions in this workspace');
+    deps.stdout('  resume <id> <prompt>   continue an existing session with another turn');
+    deps.stdout('  fork <id>              create a new session forked from an existing one');
+    deps.stdout('  export <id>            print a session as portable JSONL');
     deps.stdout('');
     deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
     return 0;
@@ -55,14 +60,31 @@ export async function main(deps: CliDeps): Promise<number> {
   }
 
   if (command === 'run') {
-    return runCommand(deps, rest);
+    return runCommand(deps, rest, null);
+  }
+
+  if (command === 'resume') {
+    const [threadArg, ...promptParts] = rest;
+    if (threadArg === undefined) {
+      deps.stderr('resume: a session id is required');
+      return 1;
+    }
+    return runCommand(deps, promptParts, threadArg as ThreadId);
+  }
+
+  if (command === 'sessions' || command === 'fork' || command === 'export') {
+    return sessionCommand(deps, command, rest);
   }
 
   deps.stderr(`unknown command: ${command}`);
   return 1;
 }
 
-async function runCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
+async function runCommand(
+  deps: CliDeps,
+  args: readonly string[],
+  resumeThreadId: ThreadId | null,
+): Promise<number> {
   const { flags, positional } = parseFlags(args);
   const prompt = positional.join(' ').trim();
   if (prompt.length === 0) {
@@ -89,16 +111,29 @@ async function runCommand(deps: CliDeps, args: readonly string[]): Promise<numbe
     secrets: [deps.env['DASHSCOPE_API_KEY']],
   });
 
-  const threadId = realIds.next('thr') as ThreadId;
+  // Resume continues an existing thread; a fresh run creates one. Either way local history is
+  // authoritative — resume reconstructs the model conversation from the durable log (PV-08).
+  let threadId: ThreadId;
+  let history: ReturnType<typeof reconstructHistory> = [];
+  if (resumeThreadId !== null) {
+    if (store.getThread(resumeThreadId) === undefined) {
+      deps.stderr(`resume: no such session ${resumeThreadId}`);
+      store.close();
+      return 1;
+    }
+    threadId = resumeThreadId;
+    history = reconstructHistory(store, threadId);
+  } else {
+    threadId = realIds.next('thr') as ThreadId;
+    store.append({
+      threadId,
+      correlationId: realIds.next('cor') as CorrelationId,
+      permissionProfile: profile,
+      actor: { kind: 'user', id: 'act_user01' as never },
+      payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
+    });
+  }
   const correlationId = realIds.next('cor') as CorrelationId;
-
-  store.append({
-    threadId,
-    correlationId,
-    permissionProfile: profile,
-    actor: { kind: 'user', id: 'act_user01' as never },
-    payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
-  });
 
   try {
     const runtime = createHarnessRuntime({
@@ -113,7 +148,7 @@ async function runCommand(deps: CliDeps, args: readonly string[]): Promise<numbe
       store,
     });
 
-    const result = await runtime.runTurn({ threadId, correlationId, userText: prompt });
+    const result = await runtime.runTurn({ threadId, correlationId, userText: prompt, history });
 
     // On a non-clean end, surface the underlying failure the engine recorded, so the user (and the
     // logs) see WHY, not just "failed".
@@ -154,6 +189,71 @@ async function runCommand(deps: CliDeps, args: readonly string[]): Promise<numbe
     }
     deps.stderr(`run failed: ${message}`);
     return 2;
+  } finally {
+    store.close();
+  }
+}
+
+/**
+ * `sessions` / `fork` / `export` — reads over the durable log. None of these run the model; they
+ * are pure inspections and transformations of what is already persisted.
+ */
+function sessionCommand(deps: CliDeps, command: string, args: readonly string[]): number {
+  const stateDir = join(deps.cwd, '.qwen-harness');
+  const store = new EventStore({
+    path: join(stateDir, 'sessions.sqlite'),
+    clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
+    ids: realIds,
+    secrets: [deps.env['DASHSCOPE_API_KEY']],
+  });
+
+  try {
+    if (command === 'sessions') {
+      const sessions = listSessions(store);
+      if (sessions.length === 0) {
+        deps.stdout('no sessions in this workspace');
+        return 0;
+      }
+      for (const s of sessions) {
+        const lineage = s.forkedFrom ? ` (forked from ${s.forkedFrom})` : '';
+        deps.stdout(`${s.threadId}  turns=${s.turns}  ${s.name ?? '(unnamed)'}${lineage}`);
+      }
+      return 0;
+    }
+
+    const [id] = args;
+    if (id === undefined) {
+      deps.stderr(`${command}: a session id is required`);
+      return 1;
+    }
+    const threadId = id as ThreadId;
+
+    if (command === 'export') {
+      try {
+        deps.stdout(exportSession(store, threadId, deps.now()));
+        return 0;
+      } catch (e) {
+        deps.stderr(`export: ${e instanceof Error ? e.message : String(e)}`);
+        return 1;
+      }
+    }
+
+    // fork
+    try {
+      const newThreadId = realIds.next('thr') as ThreadId;
+      const result = forkSession(store, threadId, newThreadId, {
+        now: deps.now(),
+        actorId: 'act_system',
+        ids: realIds,
+      });
+      deps.stdout(
+        `forked ${result.fromThreadId} -> ${result.newThreadId} (${result.copiedEvents} events copied)`,
+      );
+      return 0;
+    } catch (e) {
+      deps.stderr(`fork: ${e instanceof Error ? e.message : String(e)}`);
+      return 1;
+    }
   } finally {
     store.close();
   }

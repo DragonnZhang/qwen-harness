@@ -14,3 +14,5 @@ export type { HarnessRuntime, HarnessRuntimeOptions } from './wiring.ts';
 export { runDoctor } from './doctor.ts';
 export type { DoctorReport } from './doctor.ts';
 export { main } from './main.ts';
+export { listSessions, reconstructHistory, forkSession, exportSession } from './sessions.ts';
+export type { SessionSummary } from './sessions.ts';

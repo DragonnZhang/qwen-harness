@@ -6,6 +6,7 @@ import type {
   PermissionProfile,
   ThreadId,
 } from '@qwen-harness/protocol';
+import type { ModelInputItem } from '@qwen-harness/provider-core';
 import { DashScopeProvider } from '@qwen-harness/provider-dashscope';
 import type { EventStore } from '@qwen-harness/storage';
 import {
@@ -182,6 +183,8 @@ export interface HarnessRuntime {
     threadId: ThreadId;
     correlationId: CorrelationId;
     userText: string;
+    /** Prior durable history, reconstructed from the log on resume. Empty for a fresh session. */
+    history?: readonly ModelInputItem[];
   }): Promise<{ finalText: string; state: string; reason: string | null }>;
 }
 
@@ -255,7 +258,7 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
         permissionProfile: opts.profile,
         model: opts.model,
         instructions: opts.instructions,
-        history: [],
+        history: input.history ?? [],
         userText: input.userText,
         tools: modelTools,
         actor: MODEL_ACTOR,
