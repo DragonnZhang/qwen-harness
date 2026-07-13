@@ -93,11 +93,34 @@ DONE since: memory, background, scheduler, agents, secret-store, network, teleme
 tested). **24 packages + 2 apps implemented. 1157 deterministic + 3 live tests pass. All gates green.**
 Matrix: 0 VERIFIED, 100 IN_PROGRESS, 78 REQUIRED.
 
-Remaining packages to build: **teams** (needs agents+tasks, both done), **mcp** (needs network+
-secret-store, both done), **tui-kit** + **skills** (in instructions or a skills package). Plus apps:
-**daemon** (SS-08 supervisor + Unix socket), **remote-worker** (reference peer), **tui** (Ink).
-Plus checkpoint 09 (release hardening, all user docs, packaging PK-01/PK-02) and 10 (full live
-suite, all ten golden paths, clean-install).
+### Package layer essentially COMPLETE (2026-07-13)
+
+**31 packages+apps have a real, tested implementation.** teams, mcp, tui-kit, secret-store, network,
+agents, memory, background, scheduler, worktrees, telemetry all DONE. Apps: daemon (single-writer
+lease + Unix socket, SS-08), remote-worker (sequenced envelope + resume), cli (run/doctor/sessions).
+The Ink `apps/tui` is landing (bundle built; PTY test in progress).
+
+**~1290+ deterministic tests, 3 live tests, all green. All gates pass.** Matrix: 0 VERIFIED,
+~120 IN_PROGRESS, ~60 REQUIRED.
+
+Remaining to reach the definition of done:
+1. Finish/verify `apps/tui` (Ink) with the PTY/restoration gate (UI-13) — landing now.
+2. WIRE the pieces into full flows the golden paths need: the turn engine already calls hooks;
+   still to compose end-to-end are approvals-that-pause-a-turn through the CLI/daemon, and the
+   daemon socket routed to a live TurnEngine. Most sub-systems exist and are unit/integration-tested;
+   the remaining work is COMPOSITION + the cross-capability E golden paths.
+3. **Checkpoint 09** — release hardening: `pnpm check` aggregate from a clean clone; packaging
+   (PK-01 bootstrap, PK-02 versioned CLI package + install/uninstall); the FULL user documentation
+   set (install/quickstart/concepts/config/permissions/sandbox/tools/hooks/skills/memory/agents/
+   teams/tasks/background-cron/worktrees/mcp-oauth/sessions/tui-cli/recovery/security/troubleshooting/
+   development); support bundle; SBOM.
+4. **Checkpoint 10** — the ten golden paths, the full credentialed live suite (recovery, edit+test+
+   diff, subagent/team/mcp/compaction live smokes), clean-install on the recorded host, and the
+   final audit that flips rows to VERIFIED with reproducible evidence.
+
+`skills` is still unbuilt (IN-01..IN-05); it can live in a new package or extend `instructions`.
+The `mcp` monitor-task background category and the full 30-hook joint verification are checkpoint-09
+integration items.
 
 Note (background/scheduler): durable job/background state persists through the existing
 side-effect-intent/settled ledger, not a new protocol payload (the agent could not modify the frozen
