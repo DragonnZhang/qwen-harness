@@ -131,15 +131,15 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | REQUIRED |
 | AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | IN_PROGRESS |
 | AG-04 | A subagent can be resumed by identity and retains its own compacted history, while ordinary completion returns only an attributed summary to the parent. | U,I,F,E | REQUIRED |
-| AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | REQUIRED |
-| AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | REQUIRED |
-| AG-07 | Protocol messages cover normal message, idle, permission request/response, plan approval request/response, shutdown request/approved/rejected, task assignment, team permission update, mode-set, sandbox permission request/response, and termination. | U,I,E | REQUIRED |
-| AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | REQUIRED |
+| AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | IN_PROGRESS |
+| AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | IN_PROGRESS |
+| AG-07 | Protocol messages cover normal message, idle, permission request/response, plan approval request/response, shutdown request/approved/rejected, task assignment, team permission update, mode-set, sandbox permission request/response, and termination. | U,I,E | IN_PROGRESS |
+| AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | IN_PROGRESS |
 | AG-09 | Plan approval keeps the teammate read-only until accepted; rejection feedback requires revision and resubmission. | U,I,T,E | REQUIRED |
-| AG-10 | Graceful shutdown supports request, accept/reject with reason, cleanup, task release, process cancellation, and terminal event. | U,I,F,E | REQUIRED |
-| AG-11 | Autonomous teammates cycle WORK -> IDLE -> WORK, prioritize shutdown, check inbox and task events, and atomically claim pending unowned unblocked tasks. | U,P,I,F,E | REQUIRED |
-| AG-12 | Teammate failure, timeout, or lost heartbeat releases/requeues owned work according to policy and reports to lead without duplicate execution. | U,P,I,F,E | REQUIRED |
-| AG-13 | Team definition/inbox/task graph/logical identity are durable, but lost OS processes are never shown running. Resume follows the incarnation, expired-request, task-lease, inbox, and explicit respawn semantics in `docs/product/defaults.md`. | U,P,I,F,E | REQUIRED |
+| AG-10 | Graceful shutdown supports request, accept/reject with reason, cleanup, task release, process cancellation, and terminal event. | U,I,F,E | IN_PROGRESS |
+| AG-11 | Autonomous teammates cycle WORK -> IDLE -> WORK, prioritize shutdown, check inbox and task events, and atomically claim pending unowned unblocked tasks. | U,P,I,F,E | IN_PROGRESS |
+| AG-12 | Teammate failure, timeout, or lost heartbeat releases/requeues owned work according to policy and reports to lead without duplicate execution. | U,P,I,F,E | IN_PROGRESS |
+| AG-13 | Team definition/inbox/task graph/logical identity are durable, but lost OS processes are never shown running. Resume follows the incarnation, expired-request, task-lease, inbox, and explicit respawn semantics in `docs/product/defaults.md`. | U,P,I,F,E | IN_PROGRESS |
 | AG-14 | TUI supports team creation, member status, direct messaging, task ownership, plan approval, permission bubbling, peek/reply, attach/detach, and shutdown. | T,E | REQUIRED |
 
 ## G. Skills, instructions, and system prompt
