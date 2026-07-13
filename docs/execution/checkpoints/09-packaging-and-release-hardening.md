@@ -1,9 +1,29 @@
 # Checkpoint 09 — Packaging and release hardening
 
-Status: **PARTIAL — PK-01, PK-02, PK-04 pass; the checkpoint gate is BLOCKED** (see §7)
+Status: **PASSED — PK-01, PK-02, PK-04 pass; the checkpoint gate `pnpm check` is GREEN**
 Date: 2026-07-13
 Host: the recorded target from checkpoint 00 (Ubuntu 26.10, x86_64, kernel 7.0.0-22-generic)
-Base commit: `7689deb`
+Base commit: `51a5ae1` (gate first passed here; PK work landed at `7689deb`)
+
+## Update — the gate now passes
+
+At the time the packaging work landed, `pnpm check` was BLOCKED by `test:performance` matching
+zero test files (§7 below records the original finding). That gate was made real — the committed
+TUI performance suite (`packages/tui-kit/test/performance/`) at the frozen thresholds — and three
+further blockers surfaced and were fixed the same way they were found, by running the whole gate:
+
+- `gen-packages` wrote JSON that prettier then wanted to reformat (32 files) → the generator now
+  emits prettier-clean output;
+- `gen-packages` stripped the TUI's custom `jsx`/`lib` tsconfig → it now preserves custom options;
+- a fake `sk-` key literal committed in a storage test → replaced with the runtime canary.
+
+`pnpm check` from a clean, committed tree now exits 0. Every stage passes: format, lint, typecheck,
+architecture (7 boundaries, 218 files), build, and all eight test projects —
+**unit 1103, integration 214 (+1 skipped: no libsecret on this host), security 132, migrations 9,
+pty 1, e2e 16, performance 5, packaging 57** — then the secret scan clean. 1537 tests, 1 skipped.
+This is the checkpoint-09 gate, passing for the first time.
+
+The rest of this document is the original packaging evidence, unchanged.
 
 Scope of this checkpoint entry: capability-matrix rows **PK-01**, **PK-02**, **PK-04**, and the
 checkpoint gate `pnpm check` from a clean clone. PK-03 (managed policy precedence) and the
