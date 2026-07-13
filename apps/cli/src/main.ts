@@ -597,9 +597,8 @@ function countTurns(store: EventStore, threadId: ThreadId): number {
 function countCompactions(store: EventStore, threadId: ThreadId): number {
   return store
     .readThread(threadId)
-    .filter(
-      (e) => e.payload.type === 'item-appended' && e.payload.item.type === 'compaction',
-    ).length;
+    .filter((e) => e.payload.type === 'item-appended' && e.payload.item.type === 'compaction')
+    .length;
 }
 
 /**

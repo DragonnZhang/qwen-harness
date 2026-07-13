@@ -5,34 +5,15 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "dist"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"],
   "references": [
-    {
-      "path": "../../packages/protocol"
-    },
-    {
-      "path": "../../packages/runtime"
-    },
-    {
-      "path": "../../packages/config"
-    },
-    {
-      "path": "../../packages/telemetry"
-    },
-    {
-      "path": "../../packages/provider-dashscope"
-    },
-    {
-      "path": "../../packages/tools-builtin"
-    },
-    {
-      "path": "../../packages/sandbox-linux"
-    }
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/runtime" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/telemetry" },
+    { "path": "../../packages/provider-dashscope" },
+    { "path": "../../packages/tools-builtin" },
+    { "path": "../../packages/sandbox-linux" }
   ]
 }

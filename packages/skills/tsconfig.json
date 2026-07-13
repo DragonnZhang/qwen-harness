@@ -5,22 +5,11 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "dist"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"],
   "references": [
-    {
-      "path": "../../packages/protocol"
-    },
-    {
-      "path": "../../packages/config"
-    },
-    {
-      "path": "../../packages/policy"
-    }
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/policy" }
   ]
 }

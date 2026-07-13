@@ -5,25 +5,12 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "dist"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "dist"],
   "references": [
-    {
-      "path": "../../packages/protocol"
-    },
-    {
-      "path": "../../packages/tools-core"
-    },
-    {
-      "path": "../../packages/policy"
-    },
-    {
-      "path": "../../packages/sandbox-linux"
-    }
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/tools-core" },
+    { "path": "../../packages/policy" },
+    { "path": "../../packages/sandbox-linux" }
   ]
 }

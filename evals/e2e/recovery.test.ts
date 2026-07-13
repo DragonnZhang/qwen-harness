@@ -43,7 +43,11 @@ const THREAD = 'thr_recovery1' as ThreadId;
 const CORR = 'cor_recovery1' as CorrelationId;
 
 function freshStore(path: string): EventStore {
-  return new EventStore({ path, clock: new ManualClock(1_700_000_000_000), ids: new SequentialIds() });
+  return new EventStore({
+    path,
+    clock: new ManualClock(1_700_000_000_000),
+    ids: new SequentialIds(),
+  });
 }
 
 async function waitForFile(path: string, timeoutMs = 15_000): Promise<void> {
@@ -304,6 +308,7 @@ describe('checkpoint-10 golden path 2: a mid-stream disconnect never replays a c
   }
 
   const APPLY_CALL: NormalizedToolCall = {
+    itemId: 'itm_apply01',
     callId: 'call_apply0001',
     toolName: 'apply_patch',
     argumentsJson: '{"file":"server.ts"}',
@@ -336,7 +341,8 @@ describe('checkpoint-10 golden path 2: a mid-stream disconnect never replays a c
       payload: { type: 'thread-created', cwd: '/w', canonicalRepo: null, name: null },
     });
     const sink: EventSink = {
-      append: (input) => store.append({ ...input, causationId: (input.causationId ?? null) as never }),
+      append: (input) =>
+        store.append({ ...input, causationId: (input.causationId ?? null) as never }),
       mayExecute: (key) => store.mayExecute(key),
     };
 
@@ -359,11 +365,15 @@ describe('checkpoint-10 golden path 2: a mid-stream disconnect never replays a c
             argumentsJson: APPLY_CALL.argumentsJson,
             arguments: APPLY_CALL.arguments,
           } satisfies ProviderStreamEvent;
-          yield { type: 'done', finishReason: 'tool_calls' } satisfies ProviderStreamEvent;
+          yield { type: 'done', finishReason: 'tool-calls' } satisfies ProviderStreamEvent;
           return;
         }
         // Round 2: a few bytes arrive, then the connection drops.
-        yield { type: 'text-delta', itemId: 'm', delta: 'Working on ' } satisfies ProviderStreamEvent;
+        yield {
+          type: 'text-delta',
+          itemId: 'm',
+          delta: 'Working on ',
+        } satisfies ProviderStreamEvent;
         throw new Error('stream disconnected mid-response');
       },
     };

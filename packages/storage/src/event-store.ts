@@ -491,8 +491,7 @@ export class EventStore {
   /** Retrieve an offloaded blob by digest, or `undefined` when it was never stored. */
   readBlob(digest: string): string | undefined {
     const row = this.#db.prepare('SELECT content FROM blobs WHERE digest = ?').get(digest) as
-      | { content: Buffer }
-      | undefined;
+      { content: Buffer } | undefined;
     return row === undefined ? undefined : row.content.toString('utf8');
   }
 }

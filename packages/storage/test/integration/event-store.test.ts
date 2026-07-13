@@ -440,7 +440,9 @@ describe('EventStore: offloaded blobs (TL-10 / CX-02)', () => {
 
     // Writing identical content again is a no-op, not a duplicate row.
     store.putBlob(digest, content);
-    const rows = store.db.prepare('SELECT COUNT(*) AS n FROM blobs WHERE digest = ?').get(digest) as {
+    const rows = store.db
+      .prepare('SELECT COUNT(*) AS n FROM blobs WHERE digest = ?')
+      .get(digest) as {
       n: number;
     };
     expect(rows.n).toBe(1);

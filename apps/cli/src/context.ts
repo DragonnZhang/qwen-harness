@@ -197,7 +197,12 @@ export function createContextManager(options: ContextManagerOptions): ContextMan
 
       const overThreshold = budget.overThreshold || budget.overCapacity;
       if (!overThreshold) {
-        return { items: reduced.items, utilization: budget.utilization, compacted: false, trigger: null };
+        return {
+          items: reduced.items,
+          utilization: budget.utilization,
+          compacted: false,
+          trigger: null,
+        };
       }
 
       // (3) compaction. Keep the recent tail; compact everything older into a structured summary.
@@ -207,7 +212,12 @@ export function createContextManager(options: ContextManagerOptions): ContextMan
       if (head.length === 0) {
         // Nothing old enough to compact — the recent tail alone is over budget. Cheap reduction is
         // all we can honestly do; do not fabricate a compaction that reclaims nothing.
-        return { items: reduced.items, utilization: budget.utilization, compacted: false, trigger: null };
+        return {
+          items: reduced.items,
+          utilization: budget.utilization,
+          compacted: false,
+          trigger: null,
+        };
       }
 
       const trigger: CompactionTrigger = budget.overCapacity ? 'reactive-overflow' : 'proactive';

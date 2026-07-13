@@ -3,14 +3,39 @@
  * of the layered dependency graph. The same declaration is the input to `pnpm architecture`,
  * so the manifests and the enforced boundary can never drift apart.
  *
- * Run: node --experimental-strip-types scripts/gen-packages.ts
+ * Run: tsx scripts/gen-packages.ts
  */
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import prettier from 'prettier';
+
 import { LAYERS, PACKAGE_DEPS, type PackageName } from './graph.ts';
 
 const ROOT = join(import.meta.dirname, '..');
+
+/**
+ * Write JSON the way prettier would, so `pnpm format:check` never has to re-fix a generated file.
+ *
+ * `JSON.stringify(v, null, 2)` and prettier disagree — prettier collapses short arrays onto one
+ * line (`"include": ["src/**​/*"]`) where stringify always expands them. That disagreement made the
+ * format gate fail every time this script ran, for 32 tsconfig files at once. Formatting the output
+ * through prettier's own resolved config removes the disagreement at the source rather than leaving
+ * a `pnpm format` chore behind every regeneration.
+ */
+async function writeFormattedJson(path: string, value: unknown): Promise<void> {
+  const options = await prettier.resolveConfig(path);
+  // The parser is inferred from `filepath`, NOT forced. Prettier applies a `json-stringify` parser
+  // to `package.json` specifically (which keeps nested objects expanded) and a plain `json` parser
+  // to `tsconfig.json` (which collapses short arrays). Forcing one parser gets one of them wrong —
+  // that is the whole reason this used to fight the format gate. Letting prettier pick per file is
+  // what makes the generated output byte-identical to what `pnpm format:check` expects.
+  const formatted = await prettier.format(JSON.stringify(value), {
+    ...options,
+    filepath: path,
+  });
+  writeFileSync(path, formatted);
+}
 
 function locate(name: PackageName): string {
   return LAYERS.apps.includes(name as never) ? `apps/${name}` : `packages/${name}`;
@@ -89,7 +114,7 @@ for (const [name, deps] of Object.entries(PACKAGE_DEPS) as [PackageName, Package
   if (Object.keys(devDeps).length > 0) pkg['devDependencies'] = devDeps;
   else delete pkg['devDependencies'];
 
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  await writeFormattedJson(pkgPath, pkg);
 
   const tsconfig = {
     extends: '../../tsconfig.base.json',
@@ -102,16 +127,13 @@ for (const [name, deps] of Object.entries(PACKAGE_DEPS) as [PackageName, Package
     exclude: ['src/**/*.test.ts', 'dist'],
     references: deps.map((d) => ({ path: `../../${locate(d)}` })),
   };
-  writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2) + '\n');
+  await writeFormattedJson(join(dir, 'tsconfig.json'), tsconfig);
 }
 
 // Root solution tsconfig references every package so `tsc --build` walks the whole graph.
 const all = (Object.keys(PACKAGE_DEPS) as PackageName[]).map((n) => ({
   path: `./${locate(n)}`,
 }));
-writeFileSync(
-  join(ROOT, 'tsconfig.json'),
-  JSON.stringify({ files: [], references: all }, null, 2) + '\n',
-);
+await writeFormattedJson(join(ROOT, 'tsconfig.json'), { files: [], references: all });
 
 console.log(`generated ${Object.keys(PACKAGE_DEPS).length} package manifests`);
