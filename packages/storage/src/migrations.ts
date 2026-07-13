@@ -188,9 +188,30 @@ export function currentVersion(db: Database): number {
   return typeof row === 'number' ? row : 0;
 }
 
+/** Thrown when a database was written by a NEWER build than the one now opening it. */
+export class SchemaTooNewError extends Error {
+  constructor(
+    readonly found: number,
+    readonly supported: number,
+  ) {
+    super(
+      `this session database is at schema version ${found}, but this build only understands ` +
+        `version ${supported}. It was written by a newer qwen-harness. Refusing to open it: an ` +
+        `older binary cannot safely read or write a newer schema, and doing so would corrupt or ` +
+        `silently drop data. Upgrade qwen-harness, or point at a different session store.`,
+    );
+    this.name = 'SchemaTooNewError';
+  }
+}
+
 /**
  * Applies every migration above the current version, each in its own transaction.
  * A failure leaves the database at the last successfully applied version — never half-migrated.
+ *
+ * Migrations only ever go FORWARD. A database from the future is refused rather than opened: there
+ * is no migration down, this build cannot know what the newer schema means, and writing to it with
+ * stale assumptions is how an event store loses history. Failing closed is the only safe answer
+ * (the config layer already refuses a future config version for the same reason).
  */
 export function migrate(db: Database): {
   from: number;
@@ -198,6 +219,9 @@ export function migrate(db: Database): {
   applied: string[];
 } {
   const from = currentVersion(db);
+  if (from > LATEST_SCHEMA_VERSION) {
+    throw new SchemaTooNewError(from, LATEST_SCHEMA_VERSION);
+  }
   const applied: string[] = [];
 
   for (const migration of MIGRATIONS) {

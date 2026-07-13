@@ -11,7 +11,13 @@
 export { EventStore, InjectedFailure } from './event-store.ts';
 export type { EventStoreOptions, AppendInput, FailureBoundary } from './event-store.ts';
 
-export { MIGRATIONS, LATEST_SCHEMA_VERSION, migrate, currentVersion } from './migrations.ts';
+export {
+  MIGRATIONS,
+  LATEST_SCHEMA_VERSION,
+  SchemaTooNewError,
+  migrate,
+  currentVersion,
+} from './migrations.ts';
 export type { Migration } from './migrations.ts';
 
 export { Redactor, createRedactor, encodedVariants, REDACTED } from './redaction.ts';
