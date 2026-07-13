@@ -14,7 +14,7 @@ import type {
   TurnId,
 } from '@qwen-harness/protocol';
 import type { ModelInputItem, ModelProvider } from '@qwen-harness/provider-core';
-import { DashScopeProvider } from '@qwen-harness/provider-dashscope';
+import { DashScopeProvider, type DashScopeProviderOptions } from '@qwen-harness/provider-dashscope';
 import type { EventStore } from '@qwen-harness/storage';
 import {
   BUILTIN_TOOLS,
@@ -61,6 +61,24 @@ import {
  */
 
 const MODEL_ACTOR: Actor = { kind: 'model', id: 'act_model1' as ActorId };
+
+/**
+ * The live provider, built from RESOLVED config. Extracted so a test can prove `baseUrl`/`transport`
+ * actually reach the endpoint the provider talks to — the whole point of this function is that the
+ * config value is not dropped on the floor (it used to be). Passing `fetchImpl` through lets that
+ * test capture the request URL without a socket. The credential is untouched here: `DashScopeProvider`
+ * reads it at its own boundary.
+ */
+export function defaultProvider(
+  authority: RunAuthority,
+  fetchImpl?: DashScopeProviderOptions['fetchImpl'],
+): ModelProvider {
+  return new DashScopeProvider({
+    baseURL: authority.config.baseUrl.value,
+    transport: authority.config.transport.value,
+    ...(fetchImpl ? { fetchImpl } : {}),
+  });
+}
 
 export interface HarnessRuntimeOptions {
   readonly workspaceRoot: string;
@@ -458,7 +476,13 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
   const tracer = opts.tracer;
   const detailed = opts.detailedTrace === true;
 
-  const baseProvider = opts.provider ?? new DashScopeProvider();
+  // The default provider is constructed from the RESOLVED config, not from hardcoded defaults.
+  // `baseUrl` and `transport` were previously loaded, shown by `doctor`, and then dropped on the
+  // floor — the provider always talked to the frozen default endpoint. That is the same
+  // "loaded but not wired" gap the managed ceiling had; a config value that silently does nothing is
+  // worse than no config value. The credential is still read only at the provider boundary
+  // (`DashScopeProvider` owns `EnvCredentialSource`), so nothing here touches the key.
+  const baseProvider = opts.provider ?? defaultProvider(opts.authority);
   // Telemetry decorates the REAL provider. When it is off, no decorator exists and the provider is
   // the one the composition built — "opt-in" means the code path does not run, not that its output
   // is thrown away.

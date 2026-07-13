@@ -9,7 +9,13 @@
  * depend on terminal rendering (UI-15). The Ink TUI is a separate client of the same runtime.
  */
 
-export { createHarnessRuntime, pipelineExecutor, riskOf, GrantStore } from './wiring.ts';
+export {
+  createHarnessRuntime,
+  defaultProvider,
+  pipelineExecutor,
+  riskOf,
+  GrantStore,
+} from './wiring.ts';
 export type { HarnessRuntime, HarnessRuntimeOptions, TurnOutcome } from './wiring.ts';
 export { runDoctor } from './doctor.ts';
 export type { DoctorReport } from './doctor.ts';
