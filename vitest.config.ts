@@ -19,7 +19,11 @@ export default defineConfig({
         test: {
           ...shared,
           name: 'unit',
-          include: ['packages/*/src/**/*.test.ts', 'packages/*/test/unit/**/*.test.ts'],
+          include: [
+            'packages/*/src/**/*.test.ts',
+            'packages/*/test/unit/**/*.test.ts',
+            'apps/*/test/unit/**/*.test.ts',
+          ],
         },
       },
       {
