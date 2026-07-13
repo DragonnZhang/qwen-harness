@@ -12,18 +12,24 @@
     }
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build && esbuild src/bin.tsx --bundle --platform=node --format=esm --target=node24 --outfile=dist/tui.bundle.mjs --packages=external --jsx=automatic --log-level=warning",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@qwen-harness/config": "workspace:*",
     "@qwen-harness/protocol": "workspace:*",
     "@qwen-harness/runtime": "workspace:*",
-    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/telemetry": "workspace:*",
     "@qwen-harness/tui-kit": "workspace:*",
-    "@qwen-harness/telemetry": "workspace:*"
+    "@types/react": "^19.2.17",
+    "esbuild": "0.25.10",
+    "ink": "7.1.0",
+    "ink-testing-library": "4.0.0",
+    "node-pty": "1.1.0",
+    "react": "19.2.7"
   },
   "bin": {
-    "qwen-harness-tui": "./dist/bin.js"
+    "qwen-harness-tui": "./dist/tui.bundle.mjs"
   },
   "devDependencies": {
     "@qwen-harness/testkit": "workspace:*"
