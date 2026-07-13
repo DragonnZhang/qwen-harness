@@ -72,9 +72,15 @@ interactive approval channel); emit the checkpoint-03-owned hook events from rea
 Stop/StopFailure/Setup/SessionStart/SessionEnd/Notification). The hook ENGINE exists; it needs to be
 CALLED from the turn engine's tool loop.
 
-Checkpoint 04 (finish): the per-user supervisor daemon + versioned Unix-socket protocol (SS-08),
-session resume/fork/export in the CLI surface, and the Ink TUI vertical slice (`tui-kit` + `apps/tui`).
-The Ink spike already passed (ADR 0004); `tui-kit` and `telemetry` packages are scaffolded but empty.
+Checkpoint 04 (in progress): session list/resume/fork/export DONE in the CLI (SS-02/03/06) — resume
+reconstructs model history from the durable log; fork remints ids and records lineage without
+mutating the original; export is stable JSONL. PreToolUse/PostToolUse hooks wired into the turn
+engine. STILL remaining for 04: the per-user supervisor daemon + versioned Unix-socket protocol
+(SS-08), and the Ink TUI vertical slice (`tui-kit` + `apps/tui`). The Ink spike passed (ADR 0004);
+`tui-kit` and `telemetry` are scaffolded but empty.
+
+Checkpoint 05 (in progress, delegated): `instructions` + `context` + `memory` (skills still to do).
+Checkpoint 06 (in progress, delegated): `tasks` (todo + durable graph); background/Cron/worktrees to do.
 
 Checkpoints 05-10: instructions/skills/context/memory; todo/tasks/background/Cron/worktrees;
 subagents/teams; MCP/OAuth; release hardening (packaging, PK-01/PK-02, all docs); final integrated +
