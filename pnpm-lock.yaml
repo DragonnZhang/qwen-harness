@@ -258,6 +258,9 @@ importers:
       '@qwen-harness/storage':
         specifier: workspace:*
         version: link:../storage
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -287,6 +290,9 @@ importers:
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -524,6 +530,9 @@ importers:
       '@qwen-harness/storage':
         specifier: workspace:*
         version: link:../storage
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*

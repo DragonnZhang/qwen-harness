@@ -18,3 +18,13 @@ export { Redactor, createRedactor, encodedVariants, REDACTED } from './redaction
 
 export { exportJsonl, importJsonl, replayInto, EXPORT_FORMAT_VERSION } from './export.ts';
 export type { ExportHeader, ImportResult } from './export.ts';
+
+export { TaskStore } from './task-store.ts';
+export type {
+  StoredTask,
+  StoredTaskDep,
+  TaskEventRecord,
+  TaskEventInput,
+  TaskTx,
+  TaskStoreOptions,
+} from './task-store.ts';

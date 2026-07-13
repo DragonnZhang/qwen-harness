@@ -75,7 +75,12 @@ interface Hit {
 // ---------------------------------------------------------------------------------------------
 
 const rules: Rule[] = [
-  { name: 'api key (sk-…)', pattern: /sk-[A-Za-z0-9_-]{16,}/g, redact: false },
+  // Require a non-alphanumeric (or string start) immediately before `sk-`. A real key token is
+  // never embedded mid-identifier; without this, `task-metadata-updated` matched `sk-metadata…`.
+  // The `_` is deliberately still treated as a boundary-breaker: `sk-`-shaped strings do appear at
+  // the start of a token, and a leading `_` before a real `sk-` key would be unusual, but keeping
+  // the class strict (no alnum before) is what removes the identifier false positives.
+  { name: 'api key (sk-…)', pattern: /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{16,}/g, redact: false },
   {
     name: 'GitHub token',
     pattern: /gh[opusr]_[A-Za-z0-9]{20,}/g,

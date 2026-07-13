@@ -117,6 +117,68 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'durable-task-graph',
+    up(db) {
+      // The durable dependency task graph (capability matrix E, WK-03..WK-08). It is a SEPARATE
+      // append-only log from `events`: the frozen `EventPayloadSchema` (protocol) does not — and
+      // must not — grow task variants, so task history lives in its own `task_events` table with a
+      // `task_nodes` / `task_deps` projection rebuildable from it. The invariant mirrors the main
+      // store: an event and the projection it implies commit in ONE transaction (see task-store.ts).
+      db.exec(`
+        -- The high-water mark. A SINGLE row whose counter only ever INCREASES, so a deleted id is
+        -- never reused (WK-07) — reuse is impossible by construction, not by a uniqueness check.
+        CREATE TABLE task_high_water (
+          id      INTEGER PRIMARY KEY CHECK (id = 0),
+          next_id INTEGER NOT NULL
+        ) STRICT;
+        INSERT INTO task_high_water (id, next_id) VALUES (0, 1);
+
+        -- The authoritative append-only task log. Everything below is a projection of this.
+        CREATE TABLE task_events (
+          seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id     INTEGER NOT NULL,
+          type        TEXT    NOT NULL,
+          payload     TEXT    NOT NULL,
+          actor_kind  TEXT    NOT NULL,
+          actor_id    TEXT    NOT NULL,
+          actor_label TEXT,
+          timestamp   INTEGER NOT NULL
+        ) STRICT;
+        CREATE INDEX idx_task_events_task ON task_events (task_id, seq);
+
+        -- Projection: current state of every task. Rebuildable from task_events (WK-07 crash
+        -- survival). The version column is bumped on every mutation; a claimer reads it inside the
+        -- write transaction to make claiming TOCTOU-safe (WK-06).
+        CREATE TABLE task_nodes (
+          id               INTEGER PRIMARY KEY,
+          subject          TEXT    NOT NULL,
+          description      TEXT    NOT NULL,
+          active_form      TEXT    NOT NULL,
+          owner            TEXT,
+          status           TEXT    NOT NULL,
+          metadata         TEXT    NOT NULL,
+          version          INTEGER NOT NULL,
+          created_at       INTEGER NOT NULL,
+          updated_at       INTEGER NOT NULL,
+          created_by_kind  TEXT    NOT NULL,
+          created_by_id    TEXT    NOT NULL,
+          created_by_label TEXT
+        ) STRICT;
+
+        -- Projection: dependency edges. blocker_id must complete before blocked_id can begin.
+        -- Normalized (not denormalized JSON arrays) so the graph has a single source of truth and
+        -- cycle detection reads coherent edges.
+        CREATE TABLE task_deps (
+          blocker_id INTEGER NOT NULL,
+          blocked_id INTEGER NOT NULL,
+          PRIMARY KEY (blocker_id, blocked_id)
+        ) STRICT;
+        CREATE INDEX idx_task_deps_blocked ON task_deps (blocked_id);
+      `);
+    },
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
