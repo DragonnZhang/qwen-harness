@@ -246,7 +246,10 @@ export class NetworkBroker {
    * content-type-gate the body: a JSON-RPC frame must be byte-exact and an SSE stream is
    * `text/event-stream`. The security-critical checks are unchanged; only body handling differs.
    */
-  async send(request: OutboundRequest, opts: { signal?: AbortSignal } = {}): Promise<RawEgressResponse> {
+  async send(
+    request: OutboundRequest,
+    opts: { signal?: AbortSignal } = {},
+  ): Promise<RawEgressResponse> {
     let current = request.url;
 
     for (let hop = 0; hop <= this.#policy.maxRedirects; hop++) {

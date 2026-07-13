@@ -102,8 +102,10 @@ function scriptedProvider(rounds: readonly RoundScript[], onStream: StreamSink):
       roundIndex += 1;
       return (async function* stream(): AsyncGenerator<ProviderStreamEvent> {
         const signal = request.signal;
+        const abortError = (): Error =>
+          signal?.reason instanceof Error ? signal.reason : new Error('aborted');
         const throwIfAborted = (): void => {
-          if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+          if (signal?.aborted) throw abortError();
         };
         yield { type: 'request-id', requestId: `req_${roundIndex}` };
 
@@ -123,12 +125,10 @@ function scriptedProvider(rounds: readonly RoundScript[], onStream: StreamSink):
           // rejects here — the engine then cancels the turn (a real cancellation, not a timeout).
           await new Promise<never>((_, reject) => {
             if (signal?.aborted) {
-              reject(signal.reason ?? new Error('aborted'));
+              reject(abortError());
               return;
             }
-            signal?.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), {
-              once: true,
-            });
+            signal?.addEventListener('abort', () => reject(abortError()), { once: true });
           });
         }
 
@@ -159,20 +159,20 @@ function scriptedProvider(rounds: readonly RoundScript[], onStream: StreamSink):
  */
 function scriptedTools(diff: string): ToolExecutor {
   return {
-    async evaluate(call): Promise<ToolEvaluation> {
+    evaluate(call): Promise<ToolEvaluation> {
       const ask = call.toolName === 'apply_patch';
-      return {
+      return Promise.resolve({
         status: ask ? 'ask' : 'allow',
         actionDigest: `dig_${call.toolName}`,
         description: `${call.toolName} greeting.ts`,
         risk: ask ? 'medium' : 'low',
         reason: ask ? 'writes a file in the workspace' : 'read-only',
         source: 'scripted-policy',
-      };
+      });
     },
-    async execute(call): Promise<ToolExecutionResult> {
+    execute(call): Promise<ToolExecutionResult> {
       const isPatch = call.toolName === 'apply_patch';
-      return {
+      return Promise.resolve({
         ok: true,
         modelText: isPatch ? diff : `${call.toolName} ok`,
         userText: isPatch ? diff : `${call.toolName} ok`,
@@ -181,7 +181,7 @@ function scriptedTools(diff: string): ToolExecutor {
         outputRef: null,
         truncated: false,
         durationMs: 7,
-      };
+      });
     },
     intentFor(call) {
       return {

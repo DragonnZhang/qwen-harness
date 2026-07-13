@@ -13,6 +13,8 @@
     "@qwen-harness/provider-core": "workspace:*",
     "@qwen-harness/provider-dashscope": "workspace:*",
     "@qwen-harness/context": "workspace:*",
+    "@qwen-harness/mcp": "workspace:*",
+    "@qwen-harness/network": "workspace:*",
     "@qwen-harness/runtime": "workspace:*",
     "@qwen-harness/scheduler": "workspace:*",
     "@qwen-harness/background": "workspace:*",

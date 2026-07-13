@@ -95,9 +95,9 @@ describe('SSRF guard applies to POST-with-body egress identically (security-crit
     'http://metadata.google.internal/x',
   ])('refuses a direct POST to a private/metadata address: %s', async (url) => {
     const broker = new NetworkBroker(() => Promise.reject(new Error('should not be called')));
-    await expect(
-      broker.send({ method: 'POST', url, body: '{"jsonrpc":"2.0"}' }),
-    ).rejects.toThrow(NetworkError);
+    await expect(broker.send({ method: 'POST', url, body: '{"jsonrpc":"2.0"}' })).rejects.toThrow(
+      NetworkError,
+    );
   });
 
   it('refuses a non-http scheme on POST', async () => {

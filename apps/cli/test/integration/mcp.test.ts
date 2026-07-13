@@ -96,9 +96,20 @@ describe('MCP servers are configurable from a file, and trusted explicitly', () 
     expect(config.resolved[0]!.active).toBe(false);
   });
 
-  it('an `http` server is REJECTED at load, not accepted and silently never connected', () => {
+  it('an `http` server is ACCEPTED at load (it is now launchable via the network broker)', () => {
     writeMcpConfig(workspace, [
-      { name: 'remote', transport: { type: 'http', url: 'https://example.test/mcp' } },
+      {
+        name: 'remote',
+        transport: { type: 'http', url: 'https://example.test/mcp', headers: { 'x-k': 'v' } },
+      },
+    ]);
+    const config = loadMcpConfiguration({ workspaceRoot: workspace, homeDir: home });
+    expect(config.resolved[0]!.config.transport.type).toBe('http');
+  });
+
+  it('a transport the app cannot launch (e.g. websocket) is still REJECTED at load', () => {
+    writeMcpConfig(workspace, [
+      { name: 'remote', transport: { type: 'websocket', url: 'wss://example.test/mcp' } },
     ]);
     expect(() => loadMcpConfiguration({ workspaceRoot: workspace, homeDir: home })).toThrow();
   });

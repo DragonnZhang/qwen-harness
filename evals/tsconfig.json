@@ -16,6 +16,8 @@
     { "path": "../packages/tool-worker" },
     { "path": "../packages/provider-core" },
     { "path": "../packages/provider-dashscope" },
+    { "path": "../packages/mcp" },
+    { "path": "../packages/network" },
     { "path": "../packages/runtime" },
     { "path": "../packages/testkit" }
   ]

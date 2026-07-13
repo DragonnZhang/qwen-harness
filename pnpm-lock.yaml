@@ -261,6 +261,12 @@ importers:
       '@qwen-harness/context':
         specifier: workspace:*
         version: link:../packages/context
+      '@qwen-harness/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      '@qwen-harness/network':
+        specifier: workspace:*
+        version: link:../packages/network
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../packages/policy

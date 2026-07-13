@@ -64,7 +64,9 @@ function spawnBundle(args, env) {
       if (predicate(state.output)) return;
       await delay(25);
     }
-    throw new Error(`timed out waiting for: ${label}\n--- output tail ---\n${state.output.slice(-2000)}`);
+    throw new Error(
+      `timed out waiting for: ${label}\n--- output tail ---\n${state.output.slice(-2000)}`,
+    );
   };
   return state;
 }
@@ -136,7 +138,11 @@ describe('golden path 8 — a real task through the compiled TUI over a PTY', ()
     app.term.write('run the full suite');
     await app.waitFor((o) => o.includes('run the full suite'), 10_000, 'second prompt typed');
     app.term.write(ENTER);
-    await app.waitFor((o) => o.includes('Running the full test suite'), 15_000, 'long work started');
+    await app.waitFor(
+      (o) => o.includes('Running the full test suite'),
+      15_000,
+      'long work started',
+    );
 
     app.term.write(CTRL_C);
     // The process must still be alive a moment later: interrupt cancelled the turn, not the app.
