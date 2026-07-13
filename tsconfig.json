@@ -44,6 +44,9 @@
       "path": "./packages/instructions"
     },
     {
+      "path": "./packages/skills"
+    },
+    {
       "path": "./packages/context"
     },
     {

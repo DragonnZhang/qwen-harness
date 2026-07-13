@@ -1,6 +1,7 @@
 import { createConnection, createServer, type Server, type Socket } from 'node:net';
 
-import { ClientHelloSchema, PROTOCOL_VERSION, type ClientHello } from '@qwen-harness/protocol';
+import { ClientHelloSchema, PROTOCOL_VERSION } from '@qwen-harness/protocol';
+import { z } from 'zod';
 
 /**
  * The versioned Unix-domain-socket command/event protocol (SS-08, design §4).
@@ -13,23 +14,59 @@ import { ClientHelloSchema, PROTOCOL_VERSION, type ClientHello } from '@qwen-har
  * Framing is newline-delimited JSON. The FIRST frame from a client MUST be a `ClientHello` with a
  * matching protocol version — a version mismatch is refused immediately, so a client and daemon of
  * different builds fail loudly rather than corrupting a thread with a misunderstood command.
+ *
+ * Every frame crossing the socket is parsed by a zod schema before anything reads a field from it.
+ * A local socket is still an untrusted boundary: whoever can connect can send bytes, and a daemon
+ * that trusted the shape of those bytes would be one malformed frame away from undefined behavior.
  */
 
-export type ServerFrame =
-  | { readonly kind: 'hello-ack'; readonly protocolVersion: number; readonly daemonPid: number }
-  | { readonly kind: 'hello-reject'; readonly reason: string }
-  | { readonly kind: 'event'; readonly event: unknown }
-  | { readonly kind: 'error'; readonly message: string };
+/** What the daemon asks a client, when policy says an action needs a human. */
+export const ApprovalRequestFrameSchema = z.object({
+  threadId: z.string().min(1),
+  turnId: z.string().min(1),
+  callId: z.string().min(1),
+  toolName: z.string().min(1),
+  /** The exact normalized action, as policy described it. This is what the human approves. */
+  description: z.string(),
+  risk: z.enum(['low', 'medium', 'high']),
+  reason: z.string(),
+});
+export type ApprovalRequestFrame = z.infer<typeof ApprovalRequestFrameSchema>;
 
-export type ClientFrame =
-  | { readonly kind: 'hello'; readonly hello: ClientHello }
-  | { readonly kind: 'command'; readonly command: unknown };
+export const ServerFrameSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('hello-ack'),
+    protocolVersion: z.number().int().positive(),
+    daemonPid: z.number().int(),
+  }),
+  z.object({ kind: z.literal('hello-reject'), reason: z.string() }),
+  /** A durable `HarnessEvent`, exactly as it was written to the log. */
+  z.object({ kind: z.literal('event'), event: z.unknown() }),
+  z.object({ kind: z.literal('approval-request'), request: ApprovalRequestFrameSchema }),
+  z.object({
+    kind: z.literal('turn-result'),
+    threadId: z.string().min(1),
+    turnId: z.string().min(1),
+    state: z.string(),
+    reason: z.string().nullable(),
+    finalText: z.string(),
+  }),
+  z.object({ kind: z.literal('error'), message: z.string() }),
+]);
+export type ServerFrame = z.infer<typeof ServerFrameSchema>;
+
+export const ClientFrameSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('hello'), hello: ClientHelloSchema }),
+  z.object({ kind: z.literal('command'), command: z.unknown() }),
+]);
+export type ClientFrame = z.infer<typeof ClientFrameSchema>;
 
 export interface SocketServerHandlers {
-  /** Called with each validated command from a connected, handshaken client. */
+  /** Called with each validated FRAME from a connected, handshaken client. The command inside is
+   * still unvalidated — the daemon parses it against the protocol's `CommandSchema`. */
   onCommand(command: unknown, send: (frame: ServerFrame) => void): void;
-  onConnect?(clientName: string): void;
-  onDisconnect?(clientName: string): void;
+  onConnect?(clientName: string, send: (frame: ServerFrame) => void): void;
+  onDisconnect?(clientName: string, send: (frame: ServerFrame) => void): void;
 }
 
 /**
@@ -38,6 +75,7 @@ export interface SocketServerHandlers {
  */
 export class CommandSocketServer {
   #server: Server | null = null;
+  readonly #sockets = new Set<Socket>();
 
   constructor(
     private readonly socketPath: string,
@@ -57,6 +95,7 @@ export class CommandSocketServer {
   }
 
   #onSocket(socket: Socket): void {
+    this.#sockets.add(socket);
     let handshaken = false;
     let clientName = '(unknown)';
     const send = (frame: ServerFrame) => {
@@ -66,7 +105,12 @@ export class CommandSocketServer {
     forEachLine(socket, (line) => {
       let frame: ClientFrame;
       try {
-        frame = JSON.parse(line) as ClientFrame;
+        const parsed = ClientFrameSchema.safeParse(JSON.parse(line));
+        if (!parsed.success) {
+          send({ kind: 'error', message: 'malformed frame' });
+          return;
+        }
+        frame = parsed.data;
       } catch {
         send({ kind: 'error', message: 'unparseable frame' });
         return;
@@ -79,24 +123,18 @@ export class CommandSocketServer {
           socket.destroy();
           return;
         }
-        const parsed = ClientHelloSchema.safeParse(frame.hello);
-        if (!parsed.success) {
-          send({ kind: 'hello-reject', reason: 'invalid hello' });
-          socket.destroy();
-          return;
-        }
-        if (parsed.data.protocolVersion !== PROTOCOL_VERSION) {
+        if (frame.hello.protocolVersion !== PROTOCOL_VERSION) {
           send({
             kind: 'hello-reject',
-            reason: `protocol version ${parsed.data.protocolVersion} != daemon ${PROTOCOL_VERSION}`,
+            reason: `protocol version ${frame.hello.protocolVersion} != daemon ${PROTOCOL_VERSION}`,
           });
           socket.destroy();
           return;
         }
         handshaken = true;
-        clientName = parsed.data.clientName;
-        this.handlers.onConnect?.(clientName);
+        clientName = frame.hello.clientName;
         send({ kind: 'hello-ack', protocolVersion: PROTOCOL_VERSION, daemonPid: this.daemonPid });
+        this.handlers.onConnect?.(clientName, send);
         return;
       }
 
@@ -106,12 +144,15 @@ export class CommandSocketServer {
     });
 
     socket.on('close', () => {
-      if (handshaken) this.handlers.onDisconnect?.(clientName);
+      this.#sockets.delete(socket);
+      if (handshaken) this.handlers.onDisconnect?.(clientName, send);
     });
     socket.on('error', () => socket.destroy());
   }
 
   close(): Promise<void> {
+    for (const socket of this.#sockets) socket.destroy();
+    this.#sockets.clear();
     return new Promise((resolve) => {
       if (this.#server === null) return resolve();
       this.#server.close(() => resolve());
@@ -145,7 +186,12 @@ export class CommandSocketClient {
       });
 
       forEachLine(socket, (line) => {
-        const frame = JSON.parse(line) as ServerFrame;
+        const parsed = ServerFrameSchema.safeParse(JSON.parse(line));
+        if (!parsed.success) {
+          // A frame this build cannot understand is dropped, not guessed at.
+          return;
+        }
+        const frame = parsed.data;
         if (!acked) {
           if (frame.kind === 'hello-ack') {
             acked = true;

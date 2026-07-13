@@ -18,7 +18,24 @@ depend on terminal rendering (UI-15). The Ink TUI is a separate client of the sa
 - `qwen-harness run <prompt>` — runs one turn in the current workspace against the model and prints
   the result. `--profile <plan|ask|auto-accept-edits|yolo>`, `--model <name>`, `--json`.
 
-Exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked / missing credential.
+- `qwen-harness resume <id> [prompt]` — continues a session. With **no prompt**, it answers a pending
+  approval and finishes the SAME turn.
+
+Exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked / missing credential / **a turn
+left awaiting an approval nobody could answer**.
+
+## Approvals pause and resume a live turn
+
+When policy says `ask`, the turn does not fail and it does not restart. It moves to
+`awaiting-approval`, the request is written to the durable log **before** anyone is asked, and the
+prompt shows the exact normalized action policy judged (sanitized, so a tool argument cannot forge a
+dialog). Answering resumes the **same turn** into `executing` — an approval is never a new user
+message. A refusal is fed back to the model in band, paired to its own call id, so it can adapt.
+
+If there is no one to ask — `--json`, a closed stdin, a killed process — nothing is auto-approved and
+nothing is discarded. The turn stays parked in `awaiting-approval`, and `resume <id>` picks it up:
+same turn id, no second `turn-started`. A `once` approval authorizes exactly one execution of exactly
+that action; an identical call asks again.
 
 ## Proven
 
@@ -29,9 +46,19 @@ Exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked / missing cre
   with `edit_file`, ran the test with `run_shell` in the bubblewrap sandbox, saw PASS, and reported
   `state: completed`. Independent verification confirmed the test passes.
 
+- **Approvals** (`test/integration/approvals.test.ts`): against the REAL policy engine and the REAL
+  sandbox — an approval resumes the same turn (one `turn-started`, `awaiting-approval -> executing`),
+  a denial reaches the model in band, no channel parks the turn, and a `once` grant is spent on use.
+- **Crash-safe approvals** (`test/integration/approval-resume.test.ts`): process A is **SIGKILLed**
+  while the prompt is on screen; a genuinely separate process B resumes the session, answers `y`, and
+  the same turn (same turn id) completes and the tool runs. The only thing crossing the gap is the
+  event log.
+
 ## Known scope
 
-This CLI is the one-shot composition root. The per-user supervisor daemon, the Unix-socket protocol,
-session resume/fork/export in the CLI surface, and the Ink TUI are checkpoint-04+ work. State is
+This CLI is the composition root — `apps/daemon` reuses `createHarnessRuntime` rather than forking
+it. `session`-scoped grants live for the process: a new process asks again, because a lost grant
+costs a prompt while a resurrected one would cost an unapproved side effect. The Ink TUI is separate
+work. State is
 written under `.qwen-harness/sessions.sqlite` in the workspace so a run is self-contained and
 inspectable.

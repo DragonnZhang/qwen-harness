@@ -1,7 +1,14 @@
-import type { HarnessEvent, ThreadId } from '@qwen-harness/protocol';
+import type {
+  CorrelationId,
+  HarnessEvent,
+  PermissionProfile,
+  ThreadId,
+  TurnId,
+} from '@qwen-harness/protocol';
 import { exportJsonl } from '@qwen-harness/storage';
 import type { EventStore } from '@qwen-harness/storage';
 import type { ModelInputItem } from '@qwen-harness/provider-core';
+import type { ApprovalRisk, NormalizedToolCall } from '@qwen-harness/runtime';
 
 /**
  * Session operations built directly on the durable event log (SS-02, SS-03).
@@ -78,6 +85,111 @@ export function reconstructHistory(store: EventStore, threadId: ThreadId): Model
   }
 
   return history;
+}
+
+/**
+ * A turn that the durable log left waiting for a human, and everything needed to pick it up again.
+ * This is the record that makes an approval survive `kill -9`: it is derived from events alone.
+ */
+export interface PendingApprovalRecord {
+  readonly threadId: ThreadId;
+  readonly turnId: TurnId;
+  readonly correlationId: CorrelationId;
+  readonly permissionProfile: PermissionProfile;
+  /** The call the user was asked about. */
+  readonly callId: string;
+  readonly normalizedAction: string;
+  readonly risk: ApprovalRisk;
+  /**
+   * Every call of the interrupted round that never settled, in order — starting with the one under
+   * approval. They are re-offered to policy on resume, so each one is asked about again.
+   */
+  readonly pendingCalls: readonly NormalizedToolCall[];
+}
+
+/**
+ * Find the approval an unfinished turn is blocked on, reading ONLY the event log (SS-04).
+ *
+ * A turn is awaiting approval when its last `turn-started` has no `turn-ended`, and it holds an
+ * `approval-requested` with no matching `approval-resolved`. That is true whether the previous
+ * process exited politely or was killed mid-prompt — which is exactly why the pending state is
+ * persisted before anybody is asked.
+ */
+export function findPendingApproval(
+  store: EventStore,
+  threadId: ThreadId,
+): PendingApprovalRecord | null {
+  const events = store.readThread(threadId);
+
+  // The last turn is the only one that can still be open: a new turn never starts while an earlier
+  // one is unfinished (one writer, one live turn — SS-08).
+  let turnId: TurnId | null = null;
+  for (const event of events) {
+    if (event.payload.type === 'turn-started' && event.turnId !== null) turnId = event.turnId;
+  }
+  if (turnId === null) return null;
+
+  const inTurn = events.filter((e) => e.turnId === turnId);
+  if (inTurn.some((e) => e.payload.type === 'turn-ended')) return null;
+
+  const requested = inTurn
+    .map((e) => e.payload)
+    .filter((p): p is Extract<typeof p, { type: 'approval-requested' }> => {
+      return p.type === 'approval-requested';
+    });
+  if (requested.length === 0) return null;
+
+  const resolvedCallIds = new Set(
+    inTurn
+      .map((e) => e.payload)
+      .filter((p): p is Extract<typeof p, { type: 'approval-resolved' }> => {
+        return p.type === 'approval-resolved';
+      })
+      .map((p) => p.callId),
+  );
+  const open = requested.filter((p) => !resolvedCallIds.has(p.callId));
+  const pending = open.at(-1);
+  if (pending === undefined || pending.callId === null) return null;
+
+  // Which of this round's calls never produced a result? Those are what resume must execute.
+  const settled = new Set(
+    inTurn
+      .map((e) => e.payload)
+      .filter((p) => p.type === 'item-appended' && p.item.type === 'tool-result')
+      .map((p) =>
+        p.type === 'item-appended' && p.item.type === 'tool-result' ? p.item.callId : '',
+      ),
+  );
+  const pendingCalls: NormalizedToolCall[] = [];
+  for (const event of inTurn) {
+    const p = event.payload;
+    if (p.type !== 'item-appended' || p.item.type !== 'tool-call') continue;
+    if (settled.has(p.item.callId)) continue;
+    pendingCalls.push({
+      itemId: p.item.id,
+      callId: p.item.callId,
+      toolName: p.item.toolName,
+      argumentsJson: p.item.argumentsJson,
+      // A tool-call item may carry no parsed arguments (a malformed model call). Resume still
+      // offers it to the pipeline, which rejects it at the schema stage exactly as it would have.
+      arguments: p.item.arguments ?? {},
+    });
+  }
+  if (pendingCalls.length === 0) return null;
+
+  const envelope = inTurn[0];
+  if (envelope === undefined) return null;
+
+  return {
+    threadId,
+    turnId,
+    correlationId: envelope.correlationId,
+    permissionProfile: envelope.permissionProfile,
+    callId: pending.callId,
+    normalizedAction: pending.normalizedAction,
+    risk: pending.risk,
+    pendingCalls,
+  };
 }
 
 export interface ForkResult {

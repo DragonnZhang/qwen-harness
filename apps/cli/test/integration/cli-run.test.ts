@@ -10,7 +10,7 @@ import { ToolWorkerClient } from '@qwen-harness/tool-worker';
 import { CANARY_API_KEY, SequentialIds } from '@qwen-harness/testkit';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createHarnessRuntime, runDoctor } from '../../src/index.ts';
+import { authorityForProfile, createHarnessRuntime, runDoctor } from '../../src/index.ts';
 
 /**
  * The CLI composition, driven by a SCRIPTED provider so the coding loop is deterministic, but with
@@ -135,7 +135,7 @@ describe('CLI headless coding loop (deterministic, real sandbox)', () => {
 
     const runtime = createHarnessRuntime({
       workspaceRoot: workspace,
-      profile: 'yolo',
+      authority: authorityForProfile('yolo'),
       model: 'fake',
       instructions: 'fix it',
       homeDir: '/home/nonexistent',

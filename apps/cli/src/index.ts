@@ -9,10 +9,27 @@
  * depend on terminal rendering (UI-15). The Ink TUI is a separate client of the same runtime.
  */
 
-export { createHarnessRuntime, pipelineExecutor } from './wiring.ts';
-export type { HarnessRuntime, HarnessRuntimeOptions } from './wiring.ts';
+export { createHarnessRuntime, pipelineExecutor, riskOf, GrantStore } from './wiring.ts';
+export type { HarnessRuntime, HarnessRuntimeOptions, TurnOutcome } from './wiring.ts';
 export { runDoctor } from './doctor.ts';
 export type { DoctorReport } from './doctor.ts';
 export { main } from './main.ts';
-export { listSessions, reconstructHistory, forkSession, exportSession } from './sessions.ts';
-export type { SessionSummary } from './sessions.ts';
+export type { CliDeps } from './main.ts';
+export { interactiveApprovalGate } from './approvals.ts';
+export type { PromptIo } from './approvals.ts';
+export { stdinLineReader } from './stdin.ts';
+export {
+  listSessions,
+  reconstructHistory,
+  forkSession,
+  exportSession,
+  findPendingApproval,
+} from './sessions.ts';
+export type { SessionSummary, PendingApprovalRecord } from './sessions.ts';
+
+export {
+  authorityFromConfig,
+  authorityForProfile,
+  loadRunAuthority,
+  type RunAuthority,
+} from './policy-from-config.ts';

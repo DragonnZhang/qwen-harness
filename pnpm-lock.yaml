@@ -81,6 +81,9 @@ importers:
 
   apps/daemon:
     dependencies:
+      '@qwen-harness/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@qwen-harness/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -105,7 +108,13 @@ importers:
       '@qwen-harness/tools-builtin':
         specifier: workspace:*
         version: link:../../packages/tools-builtin
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
+      '@qwen-harness/provider-core':
+        specifier: workspace:*
+        version: link:../../packages/provider-core
       '@qwen-harness/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
@@ -531,6 +540,25 @@ importers:
       '@qwen-harness/config':
         specifier: workspace:*
         version: link:../config
+      '@qwen-harness/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@qwen-harness/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+
+  packages/skills:
+    dependencies:
+      '@qwen-harness/config':
+        specifier: workspace:*
+        version: link:../config
+      '@qwen-harness/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@qwen-harness/protocol':
         specifier: workspace:*
         version: link:../protocol

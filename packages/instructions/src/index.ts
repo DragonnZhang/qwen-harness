@@ -60,6 +60,32 @@ export type {
 } from './prompt.ts';
 
 export {
+  PROMPT_MODES,
+  PROMPT_MODE_ACTIVATIONS,
+  PROMPT_MODE_TABLE,
+  PromptModeSchema,
+  AgentDefinedSectionSchema,
+  AgentDefinedPromptSchema,
+  validateAgentDefinedPrompt,
+  modeChangesAuthority,
+  promptModeSection,
+  toolsForMode,
+  activatePromptMode,
+} from './prompt-modes.ts';
+export type {
+  PromptMode,
+  PromptModeActivation,
+  PromptModeSpec,
+  PromptModeState,
+  PromptModeChanged,
+  ModeCapabilities,
+  ModeToolDescriptor,
+  ToolAvailability,
+  AgentDefinedPrompt,
+  ActivateModeOptions,
+} from './prompt-modes.ts';
+
+export {
   instructionStringForRequest,
   buildRequestInstructions,
   attachInstructions,

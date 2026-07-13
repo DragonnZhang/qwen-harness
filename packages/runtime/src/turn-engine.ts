@@ -27,6 +27,14 @@ import { TurnMachine } from './turn-machine.ts';
  * That is what lets recovery distinguish not-started / complete / indeterminate work and never
  * replay a known-complete action (SS-05). The engine does not implement recovery itself — it
  * produces the durable record that recovery reads.
+ *
+ * APPROVALS. When policy says `ask`, the turn moves to `awaiting-approval` and the request is
+ * persisted BEFORE anyone is asked. A decision then resumes the SAME turn into `executing`: an
+ * approval is never a new user message and never a new turn (RT-03, PS-03). If there is no
+ * approval channel — a `--json` run, a daemon with no attached client — the turn STAYS
+ * `awaiting-approval` and the engine returns; the durable log holds the pending request, so a later
+ * process can resume that very turn (`resume()`). Nothing is ever auto-approved
+ * (defaults.md, "Cron defaults": an ask-required action without a channel becomes awaiting-approval).
  */
 
 /** The event sink the engine writes to. `EventStore` implements this; the engine never sees SQLite. */
@@ -60,8 +68,38 @@ export interface ToolExecutionResult {
   readonly durationMs: number;
 }
 
+export type ApprovalRisk = 'low' | 'medium' | 'high';
+
+/**
+ * What POLICY says about a call, decided without executing anything. The engine needs this before
+ * it acts, because an `ask` has to pause the turn and an approval has to bind to the exact action
+ * (`actionDigest`) rather than to a tool name.
+ *
+ * A call whose ARGUMENTS are malformed is not a policy question: it reports `allow` here and the
+ * pipeline rejects it inside `execute`, which surfaces the rejection to the model as a failed tool
+ * result. There is deliberately no way for an evaluation to say "allow" and have execution skip
+ * policy — `execute` re-decides internally, so the gate cannot be bypassed by lying here.
+ */
+export interface ToolEvaluation {
+  readonly status: 'allow' | 'ask' | 'deny';
+  /** The identity an approval binds to (PS-03). */
+  readonly actionDigest: string;
+  /** Human-readable, exact, normalized action — the text an approval prompt must show. */
+  readonly description: string;
+  readonly risk: ApprovalRisk;
+  readonly reason: string;
+  /** Which stage/rule produced the verdict, for the audit trail (PS-07). */
+  readonly source: string;
+}
+
 /** Executes one already-validated tool call. Implemented in an app by the sandbox pipeline. */
 export interface ToolExecutor {
+  /** Policy verdict for this call, with NO side effect. Runs before every execution. */
+  evaluate(call: {
+    callId: string;
+    toolName: string;
+    arguments: Readonly<Record<string, unknown>>;
+  }): Promise<ToolEvaluation>;
   execute(call: {
     // The provider's opaque call ID, preserved byte-for-byte for output pairing (PV-06).
     callId: string;
@@ -77,6 +115,34 @@ export interface ToolExecutor {
     kind: 'file-write' | 'file-edit' | 'patch' | 'shell' | 'git' | 'network' | 'mcp' | 'other';
     normalizedAction: string;
   };
+}
+
+/** A pending approval: everything a human (or a client over a socket) needs to decide. */
+export interface ApprovalRequest {
+  readonly turnId: TurnId;
+  readonly callId: string;
+  readonly toolName: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
+  readonly argumentsJson: string;
+  readonly actionDigest: string;
+  readonly description: string;
+  readonly risk: ApprovalRisk;
+  readonly reason: string;
+}
+
+export type ApprovalDecision =
+  | { readonly kind: 'approved'; readonly scope: 'once' | 'session' | 'rule' }
+  | { readonly kind: 'denied'; readonly reason: string }
+  /** No channel is available to answer. The turn stays `awaiting-approval`, durably. */
+  | { readonly kind: 'deferred'; readonly reason: string };
+
+/**
+ * The interactive approval channel. The CLI implements it with a terminal prompt; the daemon
+ * implements it by asking its attached socket clients. An implementation that cannot ask MUST
+ * return `deferred` — returning `approved` without a human is the one thing it may never do.
+ */
+export interface ApprovalGate {
+  request(request: ApprovalRequest, signal: AbortSignal): Promise<ApprovalDecision>;
 }
 
 /**
@@ -102,6 +168,8 @@ export interface TurnEngineDeps {
   readonly budget?: BudgetLimits;
   /** Optional. When present, PreToolUse gates each tool and PostToolUse fires after. */
   readonly hooks?: TurnHooks;
+  /** Optional. Absent means there is no approval channel: an `ask` defers, it never auto-allows. */
+  readonly approvals?: ApprovalGate;
 }
 
 export interface RunTurnInput {
@@ -118,13 +186,60 @@ export interface RunTurnInput {
   readonly signal?: AbortSignal;
 }
 
+/**
+ * Resume a turn that was left `awaiting-approval` — possibly by a process that no longer exists.
+ *
+ * The turn ID is the one from the log. No `turn-started` is appended, no user message is created:
+ * the same turn continues where it stopped (task.md: "an approval RESUMES THE SAME TURN").
+ */
+export interface ResumeTurnInput {
+  readonly threadId: ThreadId;
+  readonly turnId: TurnId;
+  readonly correlationId: CorrelationId;
+  readonly permissionProfile: PermissionProfile;
+  readonly model: string;
+  readonly instructions: string;
+  /** The full reconstructed conversation, ending with the not-yet-answered function calls. */
+  readonly history: readonly ModelInputItem[];
+  /** The calls of the interrupted round that never produced a result, in order. */
+  readonly pendingCalls: readonly NormalizedToolCall[];
+  readonly tools: Parameters<ModelProvider['stream']>[0]['tools'];
+  readonly actor: Actor;
+  readonly signal?: AbortSignal;
+}
+
 export interface TurnResult {
   readonly turnId: TurnId;
   readonly state: TurnMachine['state'];
   readonly terminationReason: string | null;
   readonly rounds: number;
   readonly finalText: string;
+  /** Set exactly when `state === 'awaiting-approval'`: the request nobody could answer yet. */
+  readonly pendingApproval: ApprovalRequest | null;
 }
+
+interface DriveContext {
+  readonly base: PersistBase;
+  readonly machine: TurnMachine;
+  readonly budget: BudgetTracker;
+  readonly conversation: ModelInputItem[];
+  readonly model: string;
+  readonly instructions: string;
+  readonly tools: Parameters<ModelProvider['stream']>[0]['tools'];
+  readonly signal: AbortSignal;
+  /** Calls to execute BEFORE the first model round. Non-empty only on resume. */
+  readonly seedCalls: readonly NormalizedToolCall[];
+}
+
+type ToolPhase =
+  | { readonly stop: false }
+  | { readonly stop: true; readonly kind: 'budget'; readonly reason: string }
+  | { readonly stop: true; readonly kind: 'cancelled' }
+  | {
+      readonly stop: true;
+      readonly kind: 'awaiting-approval';
+      readonly pending: ApprovalRequest;
+    };
 
 export class TurnEngine {
   readonly #deps: TurnEngineDeps;
@@ -135,17 +250,17 @@ export class TurnEngine {
 
   /**
    * Runs one complete turn: model round → tool calls → model round → … until the model stops
-   * calling tools or a budget/limit terminates it. Every transition is persisted before it is
-   * acted on.
+   * calling tools, an approval cannot be answered, or a budget/limit terminates it. Every
+   * transition is persisted before it is acted on.
    */
   async run(input: RunTurnInput): Promise<TurnResult> {
-    const { provider, tools, sink, ids, clock } = this.#deps;
+    const { sink, ids, clock } = this.#deps;
     const signal = input.signal ?? new AbortController().signal;
     const machine = new TurnMachine();
     const budget = new BudgetTracker(this.#deps.budget ?? DEFAULT_BUDGET, () => clock.now());
 
     const turnId = ids.next('trn') as TurnId;
-    const base = {
+    const base: PersistBase = {
       threadId: input.threadId,
       turnId,
       correlationId: input.correlationId,
@@ -162,19 +277,113 @@ export class TurnEngine {
       { type: 'message', role: 'user', text: input.userText },
     ];
 
+    return this.#drive({
+      base,
+      machine,
+      budget,
+      conversation,
+      model: input.model,
+      instructions: input.instructions,
+      tools: input.tools,
+      signal,
+      seedCalls: [],
+    });
+  }
+
+  /**
+   * Resume a turn that the durable log left in `awaiting-approval`. The machine is restored to that
+   * state, the pending calls are re-offered to policy (which will ask again, now that a channel
+   * exists), and the SAME turn continues. The budget counters start fresh for the new process —
+   * a resumed turn is a new wall-clock window, and the log records every round either way.
+   */
+  async resume(input: ResumeTurnInput): Promise<TurnResult> {
+    const { clock } = this.#deps;
+    const signal = input.signal ?? new AbortController().signal;
+    const machine = new TurnMachine('awaiting-approval');
+    const budget = new BudgetTracker(this.#deps.budget ?? DEFAULT_BUDGET, () => clock.now());
+
+    const base: PersistBase = {
+      threadId: input.threadId,
+      turnId: input.turnId,
+      correlationId: input.correlationId,
+      permissionProfile: input.permissionProfile,
+      actor: input.actor,
+    };
+
+    return this.#drive({
+      base,
+      machine,
+      budget,
+      conversation: [...input.history],
+      model: input.model,
+      instructions: input.instructions,
+      tools: input.tools,
+      signal,
+      seedCalls: input.pendingCalls,
+    });
+  }
+
+  // -------------------------------------------------------------------------------------------
+
+  async #drive(ctx: DriveContext): Promise<TurnResult> {
+    const { provider, sink } = this.#deps;
+    const { base, machine, budget, conversation, signal } = ctx;
+
     let rounds = 0;
     let finalText = '';
     let terminalReason: string | null = null;
+    let pendingApproval: ApprovalRequest | null = null;
+    let calls: readonly NormalizedToolCall[] = ctx.seedCalls;
 
     try {
       for (;;) {
         if (signal.aborted) {
-          machine.transition('recovering');
-          machine.terminate('cancelled', 'user-cancelled');
+          this.#cancel(base, machine);
           terminalReason = 'user-cancelled';
           break;
         }
 
+        // --- tool phase: everything the previous model round (or the resumed turn) asked for ---
+        if (calls.length > 0) {
+          if (machine.state !== 'executing') machine.transition('executing');
+          this.#persistState(base, machine);
+
+          const phase = await this.#runToolCalls(
+            base,
+            machine,
+            calls,
+            budget,
+            signal,
+            conversation,
+          );
+          calls = [];
+
+          if (phase.stop && phase.kind === 'budget') {
+            this.#endTurn(base, machine, 'budget-exhausted', phase.reason);
+            terminalReason = phase.reason;
+            break;
+          }
+          if (phase.stop && phase.kind === 'cancelled') {
+            this.#cancel(base, machine);
+            terminalReason = 'user-cancelled';
+            break;
+          }
+          if (phase.stop && phase.kind === 'awaiting-approval') {
+            // The turn does NOT end. It is suspended in `awaiting-approval`, and the durable log
+            // holds the request. Another process — or this one, later — resumes this same turn.
+            pendingApproval = phase.pending;
+            break;
+          }
+
+          const health = budget.afterModelRound({ madeProgress: true });
+          if (health.stop) {
+            this.#endTurn(base, machine, 'budget-exhausted', health.reason);
+            terminalReason = health.reason;
+            break;
+          }
+        }
+
+        // --- model phase ---------------------------------------------------------------------
         const budgetCheck = budget.beforeModelCall();
         if (budgetCheck.stop) {
           this.#endTurn(base, machine, 'budget-exhausted', budgetCheck.reason);
@@ -182,15 +391,14 @@ export class TurnEngine {
           break;
         }
 
-        if (machine.state === 'preparing') machine.transition('model-streaming');
-        else if (machine.state === 'executing') machine.transition('model-streaming');
+        if (machine.state !== 'model-streaming') machine.transition('model-streaming');
         this.#persistState(base, machine);
 
         sink.append({
           ...base,
           payload: {
             type: 'model-request-started',
-            model: input.model,
+            model: ctx.model,
             transport: 'responses',
             requestDigest: `round:${rounds}`,
           },
@@ -198,10 +406,10 @@ export class TurnEngine {
 
         const round = await normalizeRound(
           provider.stream({
-            model: input.model,
-            instructions: input.instructions,
+            model: ctx.model,
+            instructions: ctx.instructions,
             input: conversation,
-            tools: input.tools,
+            tools: ctx.tools,
             reasoningEffort: 'medium',
             signal,
           }),
@@ -231,76 +439,65 @@ export class TurnEngine {
         if (round.assistantText) {
           conversation.push({ type: 'message', role: 'assistant', text: round.assistantText });
         }
-
-        // Execute tool calls in order, persisting intent before and result after each (SS-05).
-        machine.transition('executing');
-        this.#persistState(base, machine);
-
-        const progressed = await this.#runToolCalls(
-          base,
-          round.toolCalls,
-          tools,
-          sink,
-          budget,
-          signal,
-          conversation,
-        );
-        if (progressed.stop) {
-          this.#endTurn(base, machine, progressed.terminal, progressed.reason);
-          terminalReason = progressed.reason;
-          break;
-        }
-
-        const health = budget.afterModelRound({ madeProgress: true });
-        if (health.stop) {
-          this.#endTurn(base, machine, 'budget-exhausted', health.reason);
-          terminalReason = health.reason;
-          break;
-        }
+        calls = round.toolCalls;
       }
     } catch (e) {
-      if (!machine.isTerminal) {
-        machine.transition('recovering');
-        machine.terminate('failed', 'internal-error');
+      if (signal.aborted) {
+        // A cancellation surfaces as a thrown abort from the provider stream or the sandbox. It is
+        // a cancellation, not an internal error, and it still names a termination reason (RT-04).
+        if (!machine.isTerminal) this.#cancel(base, machine);
+        terminalReason = 'user-cancelled';
+      } else {
+        if (!machine.isTerminal) {
+          machine.transition('recovering');
+          machine.terminate('failed', 'internal-error');
+        }
+        terminalReason = 'internal-error';
+        sink.append({
+          ...base,
+          payload: {
+            type: 'model-request-failed',
+            requestId: null,
+            category: 'runtime.turn_error',
+            retryable: false,
+            message: e instanceof Error ? e.message : String(e),
+          },
+        });
+        sink.append({
+          ...base,
+          payload: { type: 'turn-ended', state: 'failed', reason: 'internal-error' },
+        });
       }
-      terminalReason = 'internal-error';
-      sink.append({
-        ...base,
-        payload: {
-          type: 'model-request-failed',
-          requestId: null,
-          category: 'runtime.turn_error',
-          retryable: false,
-          message: e instanceof Error ? e.message : String(e),
-        },
-      });
     }
 
     return {
-      turnId,
+      turnId: base.turnId,
       state: machine.state,
       terminationReason: terminalReason,
       rounds,
       finalText,
+      pendingApproval,
     };
   }
 
   async #runToolCalls(
     base: PersistBase,
+    machine: TurnMachine,
     calls: readonly NormalizedToolCall[],
-    tools: ToolExecutor,
-    sink: EventSink,
     budget: BudgetTracker,
     signal: AbortSignal,
     conversation: ModelInputItem[],
-  ): Promise<{ stop: false } | { stop: true; terminal: 'budget-exhausted'; reason: string }> {
+  ): Promise<ToolPhase> {
+    const { tools, sink } = this.#deps;
+
     for (const call of calls) {
+      if (signal.aborted) return { stop: true, kind: 'cancelled' };
+
       const budgetCheck = budget.beforeToolCall();
-      if (budgetCheck.stop)
-        return { stop: true, terminal: 'budget-exhausted', reason: budgetCheck.reason };
+      if (budgetCheck.stop) return { stop: true, kind: 'budget', reason: budgetCheck.reason };
 
       const repeat = budget.observeToolCall(call.toolName, call.argumentsJson);
-      if (repeat.stop) return { stop: true, terminal: 'budget-exhausted', reason: repeat.reason };
+      if (repeat.stop) return { stop: true, kind: 'budget', reason: repeat.reason };
 
       // PreToolUse hooks (HK owns the event; the tool domain fires it here). A block prevents the
       // tool from running AND from recording a side-effect intent — nothing happened, so nothing is
@@ -326,6 +523,106 @@ export class TurnEngine {
             callId: call.callId,
             name: call.toolName,
             output: `(blocked by a PreToolUse hook${gate.reason ? `: ${gate.reason}` : ''})`,
+          });
+          continue;
+        }
+      }
+
+      // --- policy, BEFORE any side effect ---------------------------------------------------
+      const verdict = await tools.evaluate({
+        callId: call.callId,
+        toolName: call.toolName,
+        arguments: call.arguments,
+      });
+      sink.append({
+        ...base,
+        payload: {
+          type: 'policy-decision',
+          callId: call.callId,
+          normalizedAction: verdict.description,
+          decision: verdict.status,
+          reason: verdict.reason,
+          source: verdict.source,
+        },
+      });
+
+      if (verdict.status === 'deny') {
+        // Hard deny. The model is told, in band, so it can adapt rather than die.
+        this.#recordToolDenial(base, call, `denied by policy: ${verdict.reason}`, 'policy-denied');
+        conversation.push({
+          type: 'function-output',
+          callId: call.callId,
+          name: call.toolName,
+          output: `(denied by policy: ${verdict.reason})`,
+        });
+        continue;
+      }
+
+      if (verdict.status === 'ask') {
+        const request: ApprovalRequest = {
+          turnId: base.turnId,
+          callId: call.callId,
+          toolName: call.toolName,
+          arguments: call.arguments,
+          argumentsJson: call.argumentsJson,
+          actionDigest: verdict.actionDigest,
+          description: verdict.description,
+          risk: verdict.risk,
+          reason: verdict.reason,
+        };
+
+        // Persist the pause BEFORE asking anyone. If this process dies between here and the
+        // answer, the log still says: this turn is awaiting approval for exactly this action.
+        machine.transition('awaiting-approval');
+        this.#persistState(base, machine);
+        sink.append({
+          ...base,
+          payload: {
+            type: 'approval-requested',
+            callId: call.callId,
+            normalizedAction: verdict.description,
+            risk: verdict.risk,
+          },
+        });
+
+        const decision = this.#deps.approvals
+          ? await this.#deps.approvals.request(request, signal)
+          : ({ kind: 'deferred', reason: 'no approval channel is attached' } as const);
+
+        if (signal.aborted) return { stop: true, kind: 'cancelled' };
+
+        if (decision.kind === 'deferred') {
+          // Nothing is auto-approved, ever. Leave the request unresolved in the log and hand the
+          // pending approval back to the caller.
+          return { stop: true, kind: 'awaiting-approval', pending: request };
+        }
+
+        sink.append({
+          ...base,
+          payload: {
+            type: 'approval-resolved',
+            callId: call.callId,
+            granted: decision.kind === 'approved',
+            scope: decision.kind === 'approved' ? decision.scope : null,
+          },
+        });
+
+        // Either way the SAME turn resumes into `executing`. An approval is not a new turn.
+        machine.transition('executing');
+        this.#persistState(base, machine);
+
+        if (decision.kind === 'denied') {
+          this.#recordToolDenial(
+            base,
+            call,
+            `denied by the user: ${decision.reason}`,
+            'user-denied',
+          );
+          conversation.push({
+            type: 'function-output',
+            callId: call.callId,
+            name: call.toolName,
+            output: `(the user denied this action: ${decision.reason}. Do not retry it; adapt or ask.)`,
           });
           continue;
         }
@@ -442,9 +739,48 @@ export class TurnEngine {
         name: call.toolName,
         output: result.modelText,
       });
+
+      if (signal.aborted) return { stop: true, kind: 'cancelled' };
     }
 
     return { stop: false };
+  }
+
+  /**
+   * A refused call is still a RESULT. It gets a durable `tool-result` item paired to its call ID,
+   * so the conversation stays well-formed (every call has exactly one output) and a later resume
+   * reconstructs it faithfully.
+   */
+  #recordToolDenial(
+    base: PersistBase,
+    call: NormalizedToolCall,
+    message: string,
+    category: 'policy-denied' | 'user-denied',
+  ): void {
+    const itemId = this.#deps.ids.next('itm') as ItemId;
+    this.#deps.sink.append({
+      ...base,
+      itemId,
+      payload: {
+        type: 'item-appended',
+        item: {
+          type: 'tool-result',
+          id: itemId,
+          turnId: base.turnId,
+          threadId: base.threadId,
+          seq: 0,
+          createdAt: this.#deps.clock.now(),
+          callId: call.callId,
+          toolName: call.toolName,
+          ok: false,
+          preview: message,
+          outputRef: null,
+          truncated: false,
+          durationMs: 0,
+          errorCategory: category,
+        },
+      },
+    });
   }
 
   #persistRoundItems(base: PersistBase, round: NormalizedRound): void {
@@ -566,6 +902,19 @@ export class TurnEngine {
     if (from !== undefined && from !== to) {
       this.#deps.sink.append({ ...base, payload: { type: 'turn-state-changed', from, to } });
     }
+  }
+
+  /** Cancellation is a first-class ending with a named reason, never a silent stop (RT-06). */
+  #cancel(base: PersistBase, machine: TurnMachine): void {
+    if (machine.isTerminal) return;
+    // `cancelled` is reachable from every non-terminal state, so cancellation never has to route
+    // through an intermediate state that a given turn might not legally be in.
+    machine.terminate('cancelled', 'user-cancelled');
+    this.#deps.sink.append({ ...base, payload: { type: 'cancelled', scope: 'turn' } });
+    this.#deps.sink.append({
+      ...base,
+      payload: { type: 'turn-ended', state: 'cancelled', reason: 'user-cancelled' },
+    });
   }
 
   #endTurn(

@@ -4,6 +4,7 @@
  * testable without a real process (deterministic automation, UI-15).
  */
 import { main } from './main.ts';
+import { stdinLineReader } from './stdin.ts';
 
 main({
   argv: process.argv.slice(2),
@@ -12,6 +13,7 @@ main({
   stdout: (line) => process.stdout.write(line + '\n'),
   stderr: (line) => process.stderr.write(line + '\n'),
   now: () => Date.now(),
+  readLine: stdinLineReader(process.stdin, (text) => process.stdout.write(text)),
 })
   .then((code) => process.exit(code))
   .catch((e: unknown) => {

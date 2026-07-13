@@ -23,9 +23,15 @@ export { TurnEngine } from './turn-engine.ts';
 export type {
   TurnEngineDeps,
   RunTurnInput,
+  ResumeTurnInput,
   TurnResult,
   EventSink,
   ToolExecutor,
+  ToolEvaluation,
   ToolExecutionResult,
   TurnHooks,
+  ApprovalGate,
+  ApprovalRequest,
+  ApprovalDecision,
+  ApprovalRisk,
 } from './turn-engine.ts';

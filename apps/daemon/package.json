@@ -23,12 +23,15 @@
     "@qwen-harness/telemetry": "workspace:*",
     "@qwen-harness/provider-dashscope": "workspace:*",
     "@qwen-harness/tools-builtin": "workspace:*",
-    "@qwen-harness/sandbox-linux": "workspace:*"
+    "@qwen-harness/sandbox-linux": "workspace:*",
+    "@qwen-harness/cli": "workspace:*",
+    "zod": "4.4.3"
   },
   "bin": {
     "qwen-harness-daemon": "./dist/bin.js"
   },
   "devDependencies": {
-    "@qwen-harness/testkit": "workspace:*"
+    "@qwen-harness/testkit": "workspace:*",
+    "@qwen-harness/provider-core": "workspace:*"
   }
 }

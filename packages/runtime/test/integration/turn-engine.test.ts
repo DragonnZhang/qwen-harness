@@ -44,6 +44,18 @@ function recordingExecutor(): ToolExecutor & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
+    // The real executor asks the policy engine here. This fake allows everything, which is exactly
+    // what the OLD behavior of these tests assumed — they are about persistence ordering, and the
+    // approval path has its own tests against the real policy engine (apps/cli, apps/daemon).
+    evaluate: (call) =>
+      Promise.resolve({
+        status: 'allow' as const,
+        actionDigest: `digest:${call.toolName}`,
+        description: call.toolName,
+        risk: 'low' as const,
+        reason: 'the fake executor allows everything',
+        source: 'test:fake',
+      }),
     intentFor: (call) => ({
       idempotencyKey: `${call.toolName}:${JSON.stringify(call.arguments)}`,
       destructive: call.toolName.startsWith('write'),

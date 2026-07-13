@@ -17,9 +17,20 @@ import {
  * transition before presenting it as complete" means in practice.
  */
 export class TurnMachine {
-  #state: TurnState = 'preparing';
+  #state: TurnState;
   #reason: TerminationReason | null = null;
-  readonly #history: TurnState[] = ['preparing'];
+  readonly #history: TurnState[];
+
+  /**
+   * A fresh turn starts `preparing`. A turn RESTORED from the durable log starts at the state the
+   * log says it reached — that is what lets a new process pick up a turn that was left
+   * `awaiting-approval` and resume it as the SAME turn, rather than inventing a new one. The log is
+   * the truth; the machine is reconstructed from it, not the other way round.
+   */
+  constructor(restoredState: TurnState = 'preparing') {
+    this.#state = restoredState;
+    this.#history = [restoredState];
+  }
 
   get state(): TurnState {
     return this.#state;

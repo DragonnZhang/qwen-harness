@@ -25,8 +25,26 @@ Verified over a real Unix socket: a client handshakes and round-trips a command 
 version mismatch is rejected. The lease tests prove a second live holder is refused and a stale lock
 is reclaimed.
 
-## Scope
+## The socket drives a real turn
 
-This is the supervisor's protocol + lease core. Wiring the socket server to a live `TurnEngine`
-(routing `start-turn` into the runtime and streaming its events) reuses the same composition the CLI
-already does; that integration and the full detach/reconnect UX are the remaining checkpoint-04 work.
+`Daemon.start` takes the lease **before** it opens the event store, so a second daemon fails before
+it can touch the database, and then listens. A client sends `create-thread`, learns the new thread id
+from the event stream, and sends `start-turn`. The daemon runs the turn on the same
+`createHarnessRuntime` composition the CLI uses — the real policy engine, the real sandboxed tool
+worker, the real event store — and broadcasts every durable event to every attached client. Commands
+are parsed with the protocol's `CommandSchema` before a single field is read: a local socket is still
+an untrusted boundary.
+
+- **Approval** — when policy says `ask`, the daemon persists the pause, pushes an `approval-request`
+  frame carrying the exact normalized action, and waits. A client answers with `approve`, and the
+  **same turn** resumes into `executing`. An approval is never a new user message. If every client
+  detaches before answering, the request is *deferred*: the turn stays `awaiting-approval` in the
+  durable log and is resumable later. Nothing is ever auto-approved.
+- **Cancellation** — `interrupt` aborts the turn's abort tree, which reaches the sandbox and kills the
+  in-flight tool's whole **process group**. The turn then *ends*, with an explicit
+  `cancelled / user-cancelled` reason. It never merely stops.
+- **Observers** — any number of clients may watch one session; exactly one process writes, and the
+  lease is what says which.
+
+`src/bin.ts` is the executable. Started against a live lease it exits `3` and names the holder rather
+than opening a second writer.

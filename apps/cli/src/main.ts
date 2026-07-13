@@ -3,15 +3,26 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveProfile, type CorrelationId, type ThreadId } from '@qwen-harness/protocol';
+import type { ModelProvider } from '@qwen-harness/provider-core';
+import { EnvCredentialSource } from '@qwen-harness/provider-dashscope';
 import { EventStore } from '@qwen-harness/storage';
 
+import { interactiveApprovalGate } from './approvals.ts';
 import { runDoctor } from './doctor.ts';
-import { exportSession, forkSession, listSessions, reconstructHistory } from './sessions.ts';
-import { createHarnessRuntime } from './wiring.ts';
+import { loadRunAuthority, type RunAuthority } from './policy-from-config.ts';
+import {
+  exportSession,
+  findPendingApproval,
+  forkSession,
+  listSessions,
+  reconstructHistory,
+} from './sessions.ts';
+import { createHarnessRuntime, type TurnOutcome } from './wiring.ts';
 
 /**
  * The CLI argument surface. Kept tiny and explicit; a real getopts layer is a checkpoint-09 polish
- * item. Stable exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked/credential.
+ * item. Stable exit codes: 0 success, 1 usage error, 2 runtime failure, 3 blocked/credential
+ * (which includes "this turn is waiting for an approval nobody could answer").
  */
 export interface CliDeps {
   readonly argv: readonly string[];
@@ -20,6 +31,18 @@ export interface CliDeps {
   readonly stdout: (line: string) => void;
   readonly stderr: (line: string) => void;
   readonly now: () => number;
+  /**
+   * The interactive input channel. `bin.ts` backs it with stdin. When it is absent — or returns
+   * `null` (EOF) — there is no approval channel, and an `ask` action leaves the turn durably
+   * `awaiting-approval` rather than being approved or discarded.
+   */
+  readonly readLine?: (prompt: string) => Promise<string | null>;
+  /**
+   * Injected model provider. Production leaves it undefined and the composition root constructs the
+   * DashScope adapter, which reads the credential at its OWN boundary. Tests inject a scripted
+   * provider so a real second process can be driven deterministically.
+   */
+  readonly provider?: ModelProvider;
 }
 
 let idCounter = 0;
@@ -45,7 +68,8 @@ export async function main(deps: CliDeps): Promise<number> {
       '  run <prompt>           run one turn in the current workspace and print the result',
     );
     deps.stdout('  sessions               list the sessions in this workspace');
-    deps.stdout('  resume <id> <prompt>   continue an existing session with another turn');
+    deps.stdout('  resume <id> [prompt]   continue a session; with no prompt, resume a pending');
+    deps.stdout('                         approval and finish the SAME turn');
     deps.stdout('  fork <id>              create a new session forked from an existing one');
     deps.stdout('  export <id>            print a session as portable JSONL');
     deps.stdout('');
@@ -87,19 +111,49 @@ async function runCommand(
 ): Promise<number> {
   const { flags, positional } = parseFlags(args);
   const prompt = positional.join(' ').trim();
-  if (prompt.length === 0) {
-    deps.stderr('run: a prompt is required (e.g. `qwen-harness run "fix the failing test"`)');
+
+  const asJson = 'json' in flags;
+
+  // Configuration is LOADED, not assumed. Flags are just the highest-precedence config source, so
+  // they flow through the same resolution as managed/user/project files — and are clamped by the
+  // managed ceiling like everything else. A `--profile yolo` on a host whose administrator set
+  // `maxProfile: ask` resolves to `ask`; it is not an escape hatch.
+  let authority: RunAuthority;
+  try {
+    const cliOverrides: Record<string, unknown> = {};
+    if (flags['profile'] !== undefined) {
+      const requested = resolveProfile(flags['profile']);
+      if (requested === undefined) {
+        deps.stderr(`run: unknown profile "${flags['profile']}"`);
+        return 1;
+      }
+      cliOverrides['permissionProfile'] = requested;
+    }
+    if (flags['model'] !== undefined) cliOverrides['model'] = flags['model'];
+
+    authority = loadRunAuthority({
+      projectRoot: deps.cwd,
+      homeDir: homedir(),
+      env: deps.env,
+      cli: cliOverrides,
+    });
+  } catch (err) {
+    // A broken or hostile config file must fail the run, never be skipped into permissive defaults.
+    deps.stderr(`run: ${err instanceof Error ? err.message : String(err)}`);
     return 1;
   }
 
-  const profileInput = flags['profile'] ?? 'ask';
-  const profile = resolveProfile(profileInput);
-  if (profile === undefined) {
-    deps.stderr(`run: unknown profile "${profileInput}"`);
-    return 1;
+  const profile = authority.profile;
+  const model = authority.config.model.value;
+
+  // Say so when the ceiling actually bound the request. Silently downgrading authority is how a
+  // user comes to believe a run had permissions it never had.
+  if (flags['profile'] !== undefined && resolveProfile(flags['profile']) !== profile) {
+    deps.stderr(
+      `note: --profile ${flags['profile']} was clamped to "${profile}" by the managed ceiling ` +
+        `(maxProfile=${authority.managedPolicy.maxProfile}).`,
+    );
   }
-  const model = flags['model'] ?? 'qwen3.7-max';
-  const asJson = 'json' in flags;
 
   // State lives under the workspace so a run is self-contained and inspectable.
   const stateDir = join(deps.cwd, '.qwen-harness');
@@ -108,37 +162,68 @@ async function runCommand(
     path: join(stateDir, 'sessions.sqlite'),
     clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
     ids: realIds,
-    secrets: [deps.env['DASHSCOPE_API_KEY']],
+    // The redactor needs the credential VALUE to scrub it out of anything we persist. We do not
+    // read it from the environment here: `EnvCredentialSource` lives at the provider boundary, the
+    // one place permitted to read it (threat model: exactly one reader). Reading `deps.env` — an
+    // alias of `process.env` — would have quietly evaded that rule, so the architecture gate now
+    // rejects aliased reads too.
+    secrets: [new EnvCredentialSource(undefined, deps.env).read() ?? undefined],
   });
 
-  // Resume continues an existing thread; a fresh run creates one. Either way local history is
-  // authoritative — resume reconstructs the model conversation from the durable log (PV-08).
-  let threadId: ThreadId;
-  let history: ReturnType<typeof reconstructHistory> = [];
-  if (resumeThreadId !== null) {
-    if (store.getThread(resumeThreadId) === undefined) {
-      deps.stderr(`resume: no such session ${resumeThreadId}`);
-      store.close();
-      return 1;
-    }
-    threadId = resumeThreadId;
-    history = reconstructHistory(store, threadId);
-  } else {
-    threadId = realIds.next('thr') as ThreadId;
-    store.append({
-      threadId,
-      correlationId: realIds.next('cor') as CorrelationId,
-      permissionProfile: profile,
-      actor: { kind: 'user', id: 'act_user01' as never },
-      payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
-    });
-  }
-  const correlationId = realIds.next('cor') as CorrelationId;
-
   try {
+    // Resume continues an existing thread; a fresh run creates one. Either way local history is
+    // authoritative — resume reconstructs the model conversation from the durable log (PV-08).
+    let threadId: ThreadId;
+    let history: ReturnType<typeof reconstructHistory> = [];
+    let pending = null as ReturnType<typeof findPendingApproval>;
+
+    if (resumeThreadId !== null) {
+      if (store.getThread(resumeThreadId) === undefined) {
+        deps.stderr(`resume: no such session ${resumeThreadId}`);
+        return 1;
+      }
+      threadId = resumeThreadId;
+      history = reconstructHistory(store, threadId);
+      pending = findPendingApproval(store, threadId);
+      if (pending !== null && prompt.length > 0) {
+        deps.stderr(
+          `resume: this session is waiting for an approval (${pending.normalizedAction}). ` +
+            `Answer it first with \`resume ${threadId}\` — an approval continues the same turn ` +
+            `and is not a new message.`,
+        );
+        return 1;
+      }
+      if (pending === null && prompt.length === 0) {
+        deps.stderr('resume: a prompt is required (this session has no pending approval)');
+        return 1;
+      }
+    } else {
+      if (prompt.length === 0) {
+        deps.stderr('run: a prompt is required (e.g. `qwen-harness run "fix the failing test"`)');
+        return 1;
+      }
+      threadId = realIds.next('thr') as ThreadId;
+      store.append({
+        threadId,
+        correlationId: realIds.next('cor') as CorrelationId,
+        permissionProfile: profile,
+        actor: { kind: 'user', id: 'act_user01' as never },
+        payload: { type: 'thread-created', cwd: deps.cwd, canonicalRepo: deps.cwd, name: null },
+      });
+    }
+
+    // The approval channel. `--json` is a machine caller with nobody to ask, and so is a run with
+    // no input channel at all: in both cases an `ask` action suspends the turn instead of being
+    // silently allowed or silently dropped.
+    const readLine = deps.readLine;
+    const approvals =
+      asJson || readLine === undefined
+        ? undefined
+        : interactiveApprovalGate({ stdout: deps.stdout, readLine });
+
     const runtime = createHarnessRuntime({
       workspaceRoot: deps.cwd,
-      profile: profile,
+      authority,
       model,
       instructions:
         'You are a coding assistant working inside a sandboxed workspace. Use the available tools to inspect and edit files and run commands. Be concise.',
@@ -146,9 +231,25 @@ async function runCommand(
       clock: { now: deps.now },
       ids: realIds,
       store,
+      ...(approvals ? { approvals } : {}),
+      ...(deps.provider ? { provider: deps.provider } : {}),
     });
 
-    const result = await runtime.runTurn({ threadId, correlationId, userText: prompt, history });
+    const result: TurnOutcome =
+      pending !== null
+        ? await runtime.resumeTurn({
+            threadId,
+            turnId: pending.turnId,
+            correlationId: pending.correlationId,
+            history,
+            pendingCalls: pending.pendingCalls,
+          })
+        : await runtime.runTurn({
+            threadId,
+            correlationId: realIds.next('cor') as CorrelationId,
+            userText: prompt,
+            history,
+          });
 
     // On a non-clean end, surface the underlying failure the engine recorded, so the user (and the
     // logs) see WHY, not just "failed".
@@ -164,22 +265,43 @@ async function runCommand(
             )
             .at(-1)?.message ?? null);
 
+    const awaiting = result.state === 'awaiting-approval' ? result.pendingApproval : null;
+
     if (asJson) {
       deps.stdout(
         JSON.stringify({
           threadId,
+          turnId: result.turnId,
           state: result.state,
           reason: result.reason,
           finalText: result.finalText,
           detail,
+          pendingApproval: awaiting
+            ? {
+                callId: awaiting.callId,
+                toolName: awaiting.toolName,
+                action: awaiting.description,
+                risk: awaiting.risk,
+              }
+            : null,
         }),
+      );
+    } else if (awaiting !== null) {
+      deps.stdout(`this turn is waiting for an approval: ${awaiting.description}`);
+      deps.stderr(
+        `\n[awaiting-approval]  session ${threadId}\n` +
+          `answer it with: qwen-harness resume ${threadId}`,
       );
     } else {
       deps.stdout(result.finalText || '(no text output)');
       deps.stderr(`\n[${result.state}: ${result.reason ?? 'done'}]  session ${threadId}`);
       if (detail) deps.stderr(`detail: ${detail}`);
     }
-    return result.state === 'completed' ? 0 : 2;
+
+    if (result.state === 'completed') return 0;
+    // An unanswered approval is not a failure: it is a turn that is still alive and resumable.
+    if (result.state === 'awaiting-approval') return 3;
+    return 2;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // A missing credential is a distinct, actionable exit code.
@@ -204,7 +326,12 @@ function sessionCommand(deps: CliDeps, command: string, args: readonly string[])
     path: join(stateDir, 'sessions.sqlite'),
     clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
     ids: realIds,
-    secrets: [deps.env['DASHSCOPE_API_KEY']],
+    // The redactor needs the credential VALUE to scrub it out of anything we persist. We do not
+    // read it from the environment here: `EnvCredentialSource` lives at the provider boundary, the
+    // one place permitted to read it (threat model: exactly one reader). Reading `deps.env` — an
+    // alias of `process.env` — would have quietly evaded that rule, so the architecture gate now
+    // rejects aliased reads too.
+    secrets: [new EnvCredentialSource(undefined, deps.env).read() ?? undefined],
   });
 
   try {
@@ -216,7 +343,11 @@ function sessionCommand(deps: CliDeps, command: string, args: readonly string[])
       }
       for (const s of sessions) {
         const lineage = s.forkedFrom ? ` (forked from ${s.forkedFrom})` : '';
-        deps.stdout(`${s.threadId}  turns=${s.turns}  ${s.name ?? '(unnamed)'}${lineage}`);
+        const pending = findPendingApproval(store, s.threadId);
+        const waiting = pending ? `  [awaiting approval: ${pending.normalizedAction}]` : '';
+        deps.stdout(
+          `${s.threadId}  turns=${s.turns}  ${s.name ?? '(unnamed)'}${lineage}${waiting}`,
+        );
       }
       return 0;
     }

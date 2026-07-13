@@ -33,6 +33,7 @@ export const LAYERS = {
     'tools-builtin',
     'hooks',
     'instructions',
+    'skills',
     'context',
     'memory',
     'tasks',
@@ -112,6 +113,10 @@ export const IO_OWNERS: Record<string, { modules: string[]; why: string }> = {
     modules: ['node:fs', 'node:fs/promises', 'node:path'],
     why: 'reads repository instruction files',
   },
+  skills: {
+    modules: ['node:fs', 'node:fs/promises', 'node:path'],
+    why: 'reads SKILL.md metadata/bodies and canonicalizes (realpath) every skill root and resource',
+  },
   memory: {
     modules: ['node:fs', 'node:fs/promises', 'node:path'],
     why: 'reads and writes Markdown memory files',
@@ -160,6 +165,12 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
   // package dependency — which keeps the hook engine decoupled and testable without those packages.
   hooks: ['protocol', 'policy'],
   instructions: ['protocol', 'config'],
+  // `skills` is a leaf domain package on purpose. It needs protocol (Clock/IdSource, UntrustedText),
+  // config (the project config dir layout the source table is anchored on), and policy (Authority +
+  // `intersect`, so a forked skill's authority can only ever narrow). It deliberately does NOT
+  // depend on `instructions`: prompt modes (IN-09) live next to the prompt sections they modify, and
+  // skills must not be able to reach into prompt assembly.
+  skills: ['protocol', 'config', 'policy'],
   context: ['protocol', 'provider-core', 'storage'],
   memory: ['protocol', 'config', 'storage'],
   tasks: ['protocol', 'storage'],
@@ -195,6 +206,13 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
   ],
 
   // Layer 4 (apps)
+  //
+  // The daemon depends on `cli` on purpose. `apps/cli/src/wiring.ts` IS the composition root —
+  // `createHarnessRuntime` is where provider, policy, sandboxed tool worker and event store are
+  // assembled. The daemon runs the same turns the CLI runs, so it reuses that composition instead
+  // of forking it. A second wiring would be a second place for a security property to drift, and a
+  // property proved for the CLI would then say nothing about the daemon. Apps are still terminal:
+  // no PACKAGE may import an app (architecture rule 2), and this edge is app -> app, acyclic.
   daemon: [
     'protocol',
     'runtime',
@@ -204,6 +222,7 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'provider-dashscope',
     'tools-builtin',
     'sandbox-linux',
+    'cli',
   ],
   'remote-worker': [
     'protocol',

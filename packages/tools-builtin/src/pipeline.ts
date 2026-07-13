@@ -64,6 +64,37 @@ export type PipelineOutcome =
       readonly isSideEffect: boolean;
     };
 
+/**
+ * The outcome of DECIDING a call: everything the pipeline can determine without touching the host.
+ * `approved` means the sandbox step may proceed; it carries the validated arguments and the
+ * decision, so `execute` never re-derives them from unvalidated input.
+ */
+export type PipelineDecision =
+  | {
+      readonly status: 'rejected';
+      readonly stage: 'schema' | 'semantic' | 'unknown-tool';
+      readonly message: string;
+    }
+  | { readonly status: 'denied'; readonly reason: string; readonly source: string }
+  | {
+      readonly status: 'needs-approval';
+      readonly actionDigest: string;
+      readonly description: string;
+      readonly action: NormalizedAction;
+      readonly reason: string;
+      readonly source: string;
+    }
+  | {
+      readonly status: 'approved';
+      readonly action: NormalizedAction;
+      readonly actionDigest: string;
+      readonly description: string;
+      readonly reason: string;
+      readonly source: string;
+      readonly tool: BuiltinTool;
+      readonly arguments: unknown;
+    };
+
 export class ToolPipeline {
   readonly #registry: ToolRegistry;
   readonly #byName: Map<string, BuiltinTool>;
@@ -78,13 +109,11 @@ export class ToolPipeline {
   }
 
   /**
-   * Runs one tool call as far as it can go without a UI:
-   *  - `rejected` at schema/semantic — the arguments were malformed;
-   *  - `denied` — hard policy said no;
-   *  - `needs-approval` — policy said `ask`; the caller must obtain a grant and re-run;
-   *  - `executed` — it ran in the sandbox and here is the typed result.
+   * Stages 1-3: schema, semantic, policy. NO side effect, no host access — so a caller that must
+   * know "would this need an approval?" before it does anything can ask, and the answer comes from
+   * exactly the same code that will run when the call executes. There is no second policy path.
    */
-  async execute(input: ExecuteInput): Promise<PipelineOutcome> {
+  decide(input: Omit<ExecuteInput, 'grant' | 'isolation' | 'signal'>): PipelineDecision {
     const tool = this.#byName.get(input.toolName);
     if (tool === undefined) {
       return {
@@ -113,13 +142,10 @@ export class ToolPipeline {
       workspaceRoot: input.policyContext.workspaceRoot,
     });
     const decision = this.#policy.evaluate(action, input.policyContext);
+    const source = `${decision.source.stage}:${decision.source.id}`;
 
     if (decision.outcome === 'deny') {
-      return {
-        status: 'denied',
-        reason: decision.reason,
-        source: `${decision.source.stage}:${decision.source.id}`,
-      };
+      return { status: 'denied', reason: decision.reason, source };
     }
     if (decision.outcome === 'ask') {
       return {
@@ -127,8 +153,35 @@ export class ToolPipeline {
         actionDigest: decision.actionDigest,
         description: decision.description,
         action,
+        reason: decision.reason,
+        source,
       };
     }
+
+    return {
+      status: 'approved',
+      action,
+      actionDigest: decision.actionDigest,
+      description: decision.description,
+      reason: decision.reason,
+      source,
+      tool,
+      arguments: args,
+    };
+  }
+
+  /**
+   * Runs one tool call as far as it can go without a UI:
+   *  - `rejected` at schema/semantic — the arguments were malformed;
+   *  - `denied` — hard policy said no;
+   *  - `needs-approval` — policy said `ask`; the caller must obtain a grant and re-run;
+   *  - `executed` — it ran in the sandbox and here is the typed result.
+   *
+   * It always re-decides: an earlier `decide()` is advisory, never a token that skips policy.
+   */
+  async execute(input: ExecuteInput): Promise<PipelineOutcome> {
+    const decision = this.decide(input);
+    if (decision.status !== 'approved') return decision;
 
     // 4. Execute in the sandbox worker. `allow` and `passthrough` proceed. (A caller that already
     // obtained a grant passes a context whose grants make this resolve to `allow`.)
@@ -136,16 +189,16 @@ export class ToolPipeline {
       workspaceRoot: input.policyContext.workspaceRoot,
       isolation: input.isolation,
       grant: input.grant,
-      request: tool.toWorkerRequest(args as never),
+      request: decision.tool.toWorkerRequest(decision.arguments as never),
       ...(input.signal ? { signal: input.signal } : {}),
     });
 
     return {
       status: 'executed',
       response,
-      action,
-      actionDigest: actionDigest(action),
-      isSideEffect: isSideEffect(action),
+      action: decision.action,
+      actionDigest: actionDigest(decision.action),
+      isSideEffect: isSideEffect(decision.action),
     };
   }
 }

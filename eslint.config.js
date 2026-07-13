@@ -17,7 +17,10 @@ import tseslintPlugin from '@typescript-eslint/eslint-plugin';
 import tseslintParser from '@typescript-eslint/parser';
 
 const SOURCE_FILES = ['packages/**/src/**/*.ts', 'apps/**/src/**/*.ts', 'scripts/**/*.ts'];
-const TEST_FILES = ['**/*.test.ts'];
+// Test files and the fixtures they drive. A fixture (e.g. a scripted CLI spawned as a real second
+// process) is TypeScript that no package tsconfig owns, exactly like a test — so it is linted the
+// same way: real TS parser, no type information.
+const TEST_FILES = ['**/*.test.ts', '**/test/fixtures/**/*.ts'];
 
 /** The plugin's flat presets are unscoped; pin each one to the files we own. */
 const scoped = (configs) =>

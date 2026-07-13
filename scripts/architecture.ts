@@ -494,6 +494,13 @@ const results: RuleResult[] = [];
     /process\.env\s*\[\s*['"`]DASHSCOPE_API_KEY['"`]\s*\]/,
     // destructuring: const { DASHSCOPE_API_KEY } = process.env
     /\{[^}]*\bDASHSCOPE_API_KEY\b[^}]*\}\s*=\s*process\.env/,
+    // An ALIASED environment. `process.env` is routinely passed down as `deps.env` / `opts.env`, and
+    // reading the credential off the alias evades a `process.env`-only rule while breaking exactly
+    // the invariant the rule exists to protect ("exactly one reader"). The CLI really did this:
+    // `deps.env['DASHSCOPE_API_KEY']`, to feed the redactor. It now goes through the provider's
+    // `EnvCredentialSource` instead, so the read still happens at the one permitted boundary.
+    /\.env\s*\[\s*['"`]DASHSCOPE_API_KEY['"`]\s*\]/,
+    /\.env\s*\.\s*DASHSCOPE_API_KEY\b/,
   ];
   for (const unit of units) {
     if (unit.kind === 'packages' && CREDENTIAL_OWNERS.has(unit.name)) continue;
