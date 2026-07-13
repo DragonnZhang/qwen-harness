@@ -171,12 +171,12 @@ Sources: [s08](https://learn.shareai.run/en/s08/), [s09](https://learn.shareai.r
 | CX-04 | Proactive compaction and reactive overflow compaction are distinct, bounded, observable paths with pre/post hooks and retry circuit breakers. | U,P,I,F,L | REQUIRED |
 | CX-05 | Compaction restores goal/state plus root/unscoped instructions and auto memory; nested/path rules return only after matching access. Reattach recent skills at 5K each/25K total and preserve file/worktree/agent/team/tool/permission state without inventing completion. | U,I,F,E | REQUIRED |
 | CX-06 | `/compact [focus]`, `/context`, and `/clear` have explicit effects; context thrashing and diminishing returns stop safely. | U,I,T,E | IN_PROGRESS |
-| MM-01 | Long-term memory is Markdown with validated YAML metadata. Startup loads the first 200 lines or 25 KiB of `MEMORY.md`; topic files load on demand, and `/memory` exposes audited provenance/editing. Types include user, feedback, project, and reference. | U,I,S,T,D | REQUIRED |
-| MM-02 | Retrieval uses name/description side-selection with deterministic keyword fallback, provenance, per-file/session budgets, and failure isolation. | U,P,I,F,E | REQUIRED |
-| MM-03 | After a naturally completed non-cancelled turn, deterministic eligibility may run extraction; a valid empty result is a no-op. Stored memories are deduplicated and never contain secrets, raw private reasoning, transient noise, or unsupported claims. | U,P,I,S,L | REQUIRED |
-| MM-04 | Consolidation/Dream deduplicates, resolves conflicts with provenance, retires stale content, rebuilds index, and uses the exact eligibility, lock lease, frequency, wall-time, and token gates in defaults. | U,P,I,F,E | REQUIRED |
-| MM-05 | Distinguish cross-session project/user memory, machine-local auto memory shared by worktrees of one canonical repo, team-shared memory, and session memory that survives compaction only. | U,I,E,D | REQUIRED |
-| MM-06 | Concurrent memory writers use locks/transactions; lock timeout and crash recovery preserve valid previous state. | P,I,F | REQUIRED |
+| MM-01 | Long-term memory is Markdown with validated YAML metadata. Startup loads the first 200 lines or 25 KiB of `MEMORY.md`; topic files load on demand, and `/memory` exposes audited provenance/editing. Types include user, feedback, project, and reference. | U,I,S,T,D | IN_PROGRESS |
+| MM-02 | Retrieval uses name/description side-selection with deterministic keyword fallback, provenance, per-file/session budgets, and failure isolation. | U,P,I,F,E | IN_PROGRESS |
+| MM-03 | After a naturally completed non-cancelled turn, deterministic eligibility may run extraction; a valid empty result is a no-op. Stored memories are deduplicated and never contain secrets, raw private reasoning, transient noise, or unsupported claims. | U,P,I,S,L | IN_PROGRESS |
+| MM-04 | Consolidation/Dream deduplicates, resolves conflicts with provenance, retires stale content, rebuilds index, and uses the exact eligibility, lock lease, frequency, wall-time, and token gates in defaults. | U,P,I,F,E | IN_PROGRESS |
+| MM-05 | Distinguish cross-session project/user memory, machine-local auto memory shared by worktrees of one canonical repo, team-shared memory, and session memory that survives compaction only. | U,I,E,D | IN_PROGRESS |
+| MM-06 | Concurrent memory writers use locks/transactions; lock timeout and crash recovery preserve valid previous state. | P,I,F | IN_PROGRESS |
 
 ## I. Error recovery and budgets
 
@@ -198,20 +198,20 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | REQUIRED |
-| BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | REQUIRED |
+| BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | IN_PROGRESS |
+| BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | IN_PROGRESS |
 | BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | REQUIRED |
-| BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | REQUIRED |
-| BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | REQUIRED |
+| BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | IN_PROGRESS |
+| BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | IN_PROGRESS |
 | BG-06 | `/tasks` and TUI panels can list, inspect, tail, foreground/background, stop, and attribute background work without blocking the main input loop. | T,E | REQUIRED |
 | BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | REQUIRED |
-| CR-01 | Cron parser supports standard five-field wildcard, step, range, list, and DOM/DOW OR semantics with local timezone and precise validation errors. | U,P,I | REQUIRED |
-| CR-02 | Scheduler is independent from runtime, uses a date-aware minute marker, queues due work, and injects it only at safe turn boundaries. | U,P,I,F | REQUIRED |
-| CR-03 | Recurring and one-shot jobs support create/list/delete, owner/thread, creation-time authority ceiling, workload tag, maximum 50 jobs, seven-day recurring expiry, and the deterministic jitter defaults in `docs/product/defaults.md`. | U,P,I,E | REQUIRED |
+| CR-01 | Cron parser supports standard five-field wildcard, step, range, list, and DOM/DOW OR semantics with local timezone and precise validation errors. | U,P,I | IN_PROGRESS |
+| CR-02 | Scheduler is independent from runtime, uses a date-aware minute marker, queues due work, and injects it only at safe turn boundaries. | U,P,I,F | IN_PROGRESS |
+| CR-03 | Recurring and one-shot jobs support create/list/delete, owner/thread, creation-time authority ceiling, workload tag, maximum 50 jobs, seven-day recurring expiry, and the deterministic jitter defaults in `docs/product/defaults.md`. | U,P,I,E | IN_PROGRESS |
 | CR-04 | Durable definitions survive restart with locks and watchers; session-only definitions do not. The UI distinguishes these states. | U,P,I,F,T | REQUIRED |
-| CR-05 | A single invalid/failing job never kills the scheduler. Busy, coalescing, downtime, missed one-shot, recurring resume, local-timezone, and no-catch-up behavior matches `docs/product/defaults.md`. | U,P,I,F | REQUIRED |
+| CR-05 | A single invalid/failing job never kills the scheduler. Busy, coalescing, downtime, missed one-shot, recurring resume, local-timezone, and no-catch-up behavior matches `docs/product/defaults.md`. | U,P,I,F | IN_PROGRESS |
 | CR-06 | Session scheduler, local daemon/supervisor, and authenticated remote routine peer are separate backends with explicit availability; remote peer passes the frozen protocol/fixture and unattended claims require a live supervisor. | I,F,S,E,D | REQUIRED |
-| CR-07 | At fire time, a job intersects its creation-time authority ceiling with current managed policy. Work uses normal sandbox/budget/hook/audit/cancellation; without an approval channel, ask becomes `awaiting_approval` and never auto-allows. | U,I,S,E | REQUIRED |
+| CR-07 | At fire time, a job intersects its creation-time authority ceiling with current managed policy. Work uses normal sandbox/budget/hook/audit/cancellation; without an approval channel, ask becomes `awaiting_approval` and never auto-allows. | U,I,S,E | IN_PROGRESS |
 
 ## K. Git worktree isolation
 

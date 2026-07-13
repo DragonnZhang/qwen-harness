@@ -89,9 +89,20 @@ Also DONE: `telemetry` (local redacted trace).
 State as of latest batch: **18 packages + 2 apps implemented. 967 deterministic tests + 3 live
 tests, all green. All gates pass.** Matrix: 0 VERIFIED, 77 IN_PROGRESS, 101 REQUIRED.
 
-Remaining packages to build: memory, background, scheduler, agents, teams, mcp, network,
-secret-store, tui-kit, sandbox skills. Plus apps: daemon, remote-worker, tui. Plus checkpoint 09
-(release hardening, all docs, packaging PK-01/PK-02) and 10 (full live suite, all ten golden paths).
+DONE since: memory, background, scheduler, agents, secret-store, network, telemetry (all committed,
+tested). **24 packages + 2 apps implemented. 1157 deterministic + 3 live tests pass. All gates green.**
+Matrix: 0 VERIFIED, 100 IN_PROGRESS, 78 REQUIRED.
+
+Remaining packages to build: **teams** (needs agents+tasks, both done), **mcp** (needs network+
+secret-store, both done), **tui-kit** + **skills** (in instructions or a skills package). Plus apps:
+**daemon** (SS-08 supervisor + Unix socket), **remote-worker** (reference peer), **tui** (Ink).
+Plus checkpoint 09 (release hardening, all user docs, packaging PK-01/PK-02) and 10 (full live
+suite, all ten golden paths, clean-install).
+
+Note (background/scheduler): durable job/background state persists through the existing
+side-effect-intent/settled ledger, not a new protocol payload (the agent could not modify the frozen
+protocol schema). Semantically sound; if a dedicated payload is wanted later it's a protocol v2 +
+storage migration. Recorded here so it's not lost.
 
 Checkpoints 05-10: instructions/skills/context/memory; todo/tasks/background/Cron/worktrees;
 subagents/teams; MCP/OAuth; release hardening (packaging, PK-01/PK-02, all docs); final integrated +
