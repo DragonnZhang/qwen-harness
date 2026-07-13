@@ -128,7 +128,7 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | AG-01 | One-shot subagents have independent history, explicit prompt/context/tool/model/budget/permission identity, shared or isolated workspace policy, and return a bounded conclusion. | U,I,E,L | IN_PROGRESS |
-| AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | REQUIRED |
+| AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | IN_PROGRESS |
 | AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | IN_PROGRESS |
 | AG-04 | A subagent can be resumed by identity and retains its own compacted history, while ordinary completion returns only an attributed summary to the parent. | U,I,F,E | REQUIRED |
 | AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | IN_PROGRESS |
@@ -200,17 +200,17 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 |---|---|---|---|
 | BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | IN_PROGRESS |
 | BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | IN_PROGRESS |
-| BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | REQUIRED |
+| BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | IN_PROGRESS |
 | BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | IN_PROGRESS |
 | BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | IN_PROGRESS |
 | BG-06 | `/tasks` and TUI panels can list, inspect, tail, foreground/background, stop, and attribute background work without blocking the main input loop. | T,E | REQUIRED |
-| BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | REQUIRED |
+| BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | IN_PROGRESS |
 | CR-01 | Cron parser supports standard five-field wildcard, step, range, list, and DOM/DOW OR semantics with local timezone and precise validation errors. | U,P,I | IN_PROGRESS |
 | CR-02 | Scheduler is independent from runtime, uses a date-aware minute marker, queues due work, and injects it only at safe turn boundaries. | U,P,I,F | IN_PROGRESS |
 | CR-03 | Recurring and one-shot jobs support create/list/delete, owner/thread, creation-time authority ceiling, workload tag, maximum 50 jobs, seven-day recurring expiry, and the deterministic jitter defaults in `docs/product/defaults.md`. | U,P,I,E | IN_PROGRESS |
 | CR-04 | Durable definitions survive restart with locks and watchers; session-only definitions do not. The UI distinguishes these states. | U,P,I,F,T | REQUIRED |
 | CR-05 | A single invalid/failing job never kills the scheduler. Busy, coalescing, downtime, missed one-shot, recurring resume, local-timezone, and no-catch-up behavior matches `docs/product/defaults.md`. | U,P,I,F | IN_PROGRESS |
-| CR-06 | Session scheduler, local daemon/supervisor, and authenticated remote routine peer are separate backends with explicit availability; remote peer passes the frozen protocol/fixture and unattended claims require a live supervisor. | I,F,S,E,D | REQUIRED |
+| CR-06 | Session scheduler, local daemon/supervisor, and authenticated remote routine peer are separate backends with explicit availability; remote peer passes the frozen protocol/fixture and unattended claims require a live supervisor. | I,F,S,E,D | IN_PROGRESS |
 | CR-07 | At fire time, a job intersects its creation-time authority ceiling with current managed policy. Work uses normal sandbox/budget/hook/audit/cancellation; without an approval channel, ask becomes `awaiting_approval` and never auto-allows. | U,I,S,E | IN_PROGRESS |
 
 ## K. Git worktree isolation
@@ -256,7 +256,7 @@ Source: [Claude Code sessions](https://code.claude.com/docs/en/sessions) plus th
 | SS-05 | Intent, start, output, and result identities make side effects idempotent or explicitly indeterminate; destructive indeterminate work requires inspection. | U,P,I,F,S | IN_PROGRESS |
 | SS-06 | JSONL trace/export and deterministic replay can rebuild projections, preserve unknown events, compare runtime decisions, and scrub secrets. | U,P,I,S,E | IN_PROGRESS |
 | SS-07 | Retention, pruning, vacuum, backup, restore, migration rollback, file permissions, and concurrent-process locking are documented and tested. | U,P,I,F,S,D | IN_PROGRESS |
-| SS-08 | A per-user daemon owns the single writer lease. Additional clients attach through its Unix socket or explicitly fork; independent writers cannot interleave a thread, and cwd/worktree changes preserve canonical ownership. | U,P,I,F,E | REQUIRED |
+| SS-08 | A per-user daemon owns the single writer lease. Additional clients attach through its Unix socket or explicitly fork; independent writers cannot interleave a thread, and cwd/worktree changes preserve canonical ownership. | U,P,I,F,E | IN_PROGRESS |
 
 ## N. TUI, interactive CLI, and headless automation
 
@@ -264,15 +264,15 @@ Sources: [Claude Code interactive mode](https://code.claude.com/docs/en/interact
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| UI-01 | Ink renderer consumes typed projections; completed transcript is static and active stream/status/editor update without rerendering unbounded history. | U,T,E | REQUIRED |
-| UI-02 | Render Markdown, code, reasoning summary, citations/links, tool input/output, errors, progress, usage, and unified diffs with untrusted output visually separated from trusted chrome. | U,S,T,E | REQUIRED |
-| UI-03 | Multiline editor supports history, Ctrl-R search, paste/bracketed paste, Unicode/CJK/emoji/combining characters, word motion, selection, undo/redo, configurable submit, and optional Vim bindings. | U,P,T,E | REQUIRED |
+| UI-01 | Ink renderer consumes typed projections; completed transcript is static and active stream/status/editor update without rerendering unbounded history. | U,T,E | IN_PROGRESS |
+| UI-02 | Render Markdown, code, reasoning summary, citations/links, tool input/output, errors, progress, usage, and unified diffs with untrusted output visually separated from trusted chrome. | U,S,T,E | IN_PROGRESS |
+| UI-03 | Multiline editor supports history, Ctrl-R search, paste/bracketed paste, Unicode/CJK/emoji/combining characters, word motion, selection, undo/redo, configurable submit, and optional Vim bindings. | U,P,T,E | IN_PROGRESS |
 | UI-04 | `/` completes slash commands/skills and `@` completes files safely. `!` is a direct user shell action: no model prompt, but managed deny, configured isolation, audit, redaction, sanitized output, history, and no automatic model turn apply. | U,S,T,E | REQUIRED |
 | UI-05 | Permission dialog shows actor, exact normalized action, diff/command/network target, risk, once/session/rule choices, deny, and current sandbox; tabs cannot hide relevant parameters. | U,S,T,E | REQUIRED |
 | UI-06 | Mode/model/reasoning effort/thinking/status/budget/context controls are visible and validated; `yolo` warning is persistent and cannot be overwritten by tool output. | U,S,T,E | REQUIRED |
 | UI-07 | Ctrl-C interrupts active work; idle first clears and second exits. Esc interrupts work or closes a dialog; double Esc clears a draft into history or opens rewind. Steering applies at a documented safe boundary. | U,I,F,T,E | REQUIRED |
 | UI-08 | Background, task graph, agent/team, Cron, worktree, MCP, hook, memory, and session views support list, inspect, filter, open, and every domain action specified by its matrix rows. | U,T,E | REQUIRED |
-| UI-09 | Transcript viewer supports expand/collapse, search, copy/export, external pager/editor, and tool detail without binding consumers to internal event storage. | U,T,E | REQUIRED |
+| UI-09 | Transcript viewer supports expand/collapse, search, copy/export, external pager/editor, and tool detail without binding consumers to internal event storage. | U,T,E | IN_PROGRESS |
 | UI-10 | Session picker and commands support create, resume, continue, branch/fork, rename, export, archive, delete, clear, compact, and context inspection. | U,T,E | REQUIRED |
 | UI-11 | Classic scrollback renderer is production-ready; an optional fullscreen renderer may be added only after equivalent selection, resize, mouse/scroll, auto-follow, and restoration tests pass. | U,P,T,E | REQUIRED |
 | UI-12 | Status line can show cwd/worktree, Git, model, mode, context, usage/cost, duration, rate/backoff, background count, team state, and cache without leaking secrets. | U,S,T | REQUIRED |
