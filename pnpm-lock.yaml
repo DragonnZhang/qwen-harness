@@ -133,6 +133,9 @@ importers:
       '@qwen-harness/tools-builtin':
         specifier: workspace:*
         version: link:../../packages/tools-builtin
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
@@ -321,6 +324,9 @@ importers:
       '@qwen-harness/tools-core':
         specifier: workspace:*
         version: link:../tools-core
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@qwen-harness/testkit':
         specifier: workspace:*
