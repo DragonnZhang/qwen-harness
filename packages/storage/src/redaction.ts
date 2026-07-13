@@ -87,7 +87,20 @@ export class Redactor {
     return out;
   }
 
-  /** Deep-redact any JSON-serializable value, including object KEYS that name a secret. */
+  /**
+   * Deep-redact any JSON-serializable value: strings, arrays, nested objects, and the object KEYS
+   * themselves.
+   *
+   * Redacting the KEY TEXT is not paranoia — it closed a real leak. This method used to copy `k`
+   * through verbatim (`out[k] = …`), so a secret was scrubbed everywhere EXCEPT when it appeared as
+   * a property name. `{ "sk-live-…": { … } }` is not a contrived shape: a map keyed by a token, a
+   * captured environment, or a model-produced argument object can all put a credential in key
+   * position, and every one of those reaches the telemetry trace as a `fields` entry. The
+   * `apps/cli` canary test caught it by planting the key in exactly that position.
+   *
+   * If two distinct keys both redact to `[REDACTED]` they collide and the last one wins. That is a
+   * deliberate trade: losing a field in a log beats printing a credential in one.
+   */
   redactValue<T>(value: T): T {
     if (typeof value === 'string') return this.redact(value) as unknown as T;
     // `Array.isArray` on a generic narrows to `any[]`, which would make the map an unsafe return.
@@ -99,8 +112,10 @@ export class Redactor {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
         // A field literally named `authorization` / `api_key` / `password` is redacted wholesale,
-        // no matter what its value looks like.
-        out[k] = SENSITIVE_KEY.test(k) && typeof v === 'string' ? REDACTED : this.redactValue(v);
+        // no matter what its value looks like. Tested against the ORIGINAL key: a name like
+        // `api_key` must still be recognized as sensitive after its text has been scrubbed.
+        out[this.redact(k)] =
+          SENSITIVE_KEY.test(k) && typeof v === 'string' ? REDACTED : this.redactValue(v);
       }
       return out as unknown as T;
     }

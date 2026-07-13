@@ -132,6 +132,22 @@ export class Daemon {
       throw e;
     }
 
+    // CRASH RECOVERY (SS-05). The daemon holds the single-writer lease, so if it is starting then no
+    // other process owns this state — and any row still marked `in-flight` belongs to a daemon that
+    // died mid-side-effect. Promote it to `indeterminate`: honest about not knowing, and refused by
+    // `mayExecute` either way. Nothing is replayed and nothing is guessed; the row simply becomes
+    // visible to `qwen-harness side-effects`, where a human can resolve it.
+    //
+    // This runs BEFORE the socket opens, so no client can start a turn against state whose recovery
+    // has not been applied.
+    const recovered = store.recoverInterrupted();
+    if (recovered.promoted > 0) {
+      opts.log?.(
+        `recovery: ${recovered.promoted} side effect(s) interrupted by a previous crash are now ` +
+          `INDETERMINATE; they will not be re-run. Inspect with \`qwen-harness side-effects <id>\`.`,
+      );
+    }
+
     const daemon = new Daemon(opts, lease, store);
     try {
       await daemon.#server.listen();

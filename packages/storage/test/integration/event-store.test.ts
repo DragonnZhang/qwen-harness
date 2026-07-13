@@ -426,3 +426,39 @@ describe('EventStore: JSONL export and replay (SS-06)', () => {
     // Data survived. An older build did not silently destroy a newer build's event.
   });
 });
+
+describe('EventStore: offloaded blobs (TL-10 / CX-02)', () => {
+  it('round-trips content by digest and is idempotent', () => {
+    const store = newStore();
+    const content = 'A'.repeat(50_000);
+    const digest = 'blb_test_digest_1';
+
+    const first = store.putBlob(digest, content);
+    expect(first.digest).toBe(digest);
+    expect(first.bytes).toBe(50_000);
+    expect(store.readBlob(digest)).toBe(content);
+
+    // Writing identical content again is a no-op, not a duplicate row.
+    store.putBlob(digest, content);
+    const rows = store.db.prepare('SELECT COUNT(*) AS n FROM blobs WHERE digest = ?').get(digest) as {
+      n: number;
+    };
+    expect(rows.n).toBe(1);
+
+    expect(store.readBlob('blb_absent')).toBeUndefined();
+  });
+
+  it('redacts a configured secret inside offloaded content before it lands', () => {
+    const store = new EventStore({
+      path: ':memory:',
+      clock: new ManualClock(1_700_000_000_000),
+      ids: new SequentialIds(),
+      secrets: ['sk-super-secret-value'],
+    });
+    store.putBlob('blb_secret', 'prefix sk-super-secret-value suffix');
+    const stored = store.readBlob('blb_secret');
+    expect(stored).not.toContain('sk-super-secret-value');
+    expect(stored).toContain('prefix');
+    expect(stored).toContain('suffix');
+  });
+});

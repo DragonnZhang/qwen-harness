@@ -22,7 +22,7 @@
 
 import type { IsolationMode, PermissionProfile } from '@qwen-harness/protocol';
 
-import type { ReasoningEffort, Transport } from './schema.ts';
+import type { ReasoningEffort, TelemetryLevel, Transport } from './schema.ts';
 import {
   BUILTIN_SOURCE,
   OVERRIDE_RANK,
@@ -104,6 +104,10 @@ export interface ResolvedConfig {
   readonly reasoningEffort: Resolved<ReasoningEffort>;
   readonly transport: Resolved<Transport>;
   readonly telemetry: Resolved<boolean>;
+  /** Trace verbosity, meaningful only when `telemetry` is enabled (OB-02). */
+  readonly telemetryLevel: Resolved<TelemetryLevel>;
+  /** Days a trace file is kept before it is deleted (OB-02). */
+  readonly telemetryRetentionDays: Resolved<number>;
   readonly budgets: ResolvedBudgets;
   readonly toolOutput: ResolvedToolOutput;
 
@@ -249,6 +253,12 @@ export function resolveConfig(sources: readonly ConfigSource[]): ResolvedConfig 
     reasoningEffort: resolveOverride(all, 'reasoningEffort', (d) => d.reasoningEffort),
     transport: resolveOverride(all, 'transport', (d) => d.transport),
     telemetry: resolveOverride(all, 'telemetry', (d) => d.telemetry?.enabled),
+    telemetryLevel: resolveOverride(all, 'telemetryLevel', (d) => d.telemetry?.level),
+    telemetryRetentionDays: resolveOverride(
+      all,
+      'telemetryRetentionDays',
+      (d) => d.telemetry?.retentionDays,
+    ),
 
     budgets: {
       turnsPerGoal: resolveOverride(all, 'budgets.turnsPerGoal', (d) => d.budgets?.turnsPerGoal),
@@ -338,6 +348,8 @@ export type ConfigKey =
   | 'reasoningEffort'
   | 'transport'
   | 'telemetry'
+  | 'telemetryLevel'
+  | 'telemetryRetentionDays'
   | 'permissionProfile'
   | 'isolation'
   | 'network'
@@ -355,6 +367,8 @@ export const CONFIG_KEYS: readonly ConfigKey[] = [
   'reasoningEffort',
   'transport',
   'telemetry',
+  'telemetryLevel',
+  'telemetryRetentionDays',
   'permissionProfile',
   'isolation',
   'network',

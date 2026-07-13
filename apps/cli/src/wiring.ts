@@ -30,13 +30,23 @@ import {
   type ApprovalGate,
   type ApprovalRequest,
   type ApprovalRisk,
+  type ContextManager,
   type NormalizedToolCall,
   type ToolEvaluation,
   type ToolExecutionResult,
   type ToolExecutor,
+  type TurnHooks,
 } from '@qwen-harness/runtime';
+import type { Tracer } from '@qwen-harness/telemetry';
 
 import type { RunAuthority } from './policy-from-config.ts';
+import {
+  traceEvent,
+  tracedApprovals,
+  tracedExecutor,
+  tracedHooks,
+  tracedProvider,
+} from './telemetry.ts';
 
 /**
  * The composition root. Apps are the ONLY place allowed to wire the concrete I/O owners together;
@@ -70,12 +80,60 @@ export interface HarnessRuntimeOptions {
   readonly client?: ToolWorkerClient;
   readonly builtins?: readonly BuiltinTool[];
   /**
+   * The policy engine. Injectable so the app can hand the SAME instance to the MCP executor — "MCP
+   * is judged by the same policy engine as a built-in" should be literally true, not merely true of
+   * two separately-constructed engines that happen to agree today.
+   */
+  readonly policy?: PolicyEngine;
+  /**
    * The interactive approval channel. Absent means there is none: an `ask` action suspends the turn
    * in `awaiting-approval` and is never auto-approved.
    */
   readonly approvals?: ApprovalGate;
   /** Called with every event as it becomes durable. The daemon streams these to its clients. */
   readonly onEvent?: (event: HarnessEvent) => void;
+  /**
+   * Local, opt-in, redacted trace (OB-01/OB-02). Absent means telemetry is OFF: no decorator is
+   * installed and nothing is traced. Present means every provider request, tool execution, policy
+   * decision, approval, hook, and durable event is mirrored into the tracer's sink — already
+   * redacted, because `Tracer` scrubs the message and every field before the sink sees them.
+   */
+  readonly tracer?: Tracer;
+  /** At `telemetry.level: debug` the trace carries redacted CONTENT, not just shape. */
+  readonly detailedTrace?: boolean;
+  /**
+   * The hook engine, adapted to the runtime's `TurnHooks` port. A PreToolUse hook may BLOCK a tool;
+   * it can never allow one policy refused (that invariant lives in the hook engine itself, HK-04).
+   */
+  readonly hooks?: TurnHooks;
+  /**
+   * Connected MCP servers (MC-04). Their tools are offered to the model alongside the built-ins and
+   * execute through `executor`, which runs the SAME policy engine, the same approval gate, the same
+   * hooks, and the same audit trail. There is no privileged MCP path.
+   */
+  readonly mcp?: McpSurface;
+  /** Extra system-prompt-independent tools (skills catalogs etc.) offered to the model. */
+  readonly extraTools?: readonly ModelTool[];
+  /**
+   * Token budgeting and compaction (CX-01..CX-06). When present, the engine calls it before every
+   * model round: large tool outputs offload to the durable blob store, the transcript prunes, and
+   * proactive/reactive compaction fires on real growth. Absent means the full conversation is sent.
+   */
+  readonly context?: ContextManager;
+}
+
+/** A model-facing tool schema, as the provider wants it. */
+export interface ModelTool {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+}
+
+export interface McpSurface {
+  /** Namespaced `mcp__<server>__<tool>` schemas to offer the model. */
+  readonly tools: readonly ModelTool[];
+  /** Executes exactly those tools. Anything else must be refused, not guessed at. */
+  readonly executor: ToolExecutor;
 }
 
 const GRANT: WorkerGrant = {
@@ -333,6 +391,32 @@ function summarizeResult(toolName: string, result: unknown): string {
   return JSON.stringify(result).slice(0, 8000);
 }
 
+/** Every MCP tool the model can see is namespaced. This prefix is what routes a call (MC-03). */
+const MCP_PREFIX = 'mcp__';
+
+/**
+ * Dispatch a tool call to the executor that owns it: the built-in sandbox pipeline, or MCP.
+ *
+ * The split is by NAME, and the name is not the model's to choose — `assignToolNames` produced the
+ * `mcp__server__tool` form, and a built-in can never be shadowed by one (MC-03). An unknown name
+ * reaches the built-in pipeline, which rejects it as an unknown tool; it is never silently routed
+ * to a server.
+ *
+ * What this composite deliberately does NOT do is bypass anything. Both branches are ordinary
+ * `ToolExecutor`s, so the engine wraps BOTH in the same order: hooks gate the call, policy decides
+ * it, an `ask` suspends the turn for a real approval, and the intent/result pair is persisted around
+ * the execution. MCP gets no shortcut because there is nowhere to put one.
+ */
+export function compositeExecutor(builtin: ToolExecutor, mcp: McpSurface): ToolExecutor {
+  const isMcp = (toolName: string): boolean =>
+    toolName.startsWith(MCP_PREFIX) && mcp.tools.some((t) => t.name === toolName);
+  return {
+    intentFor: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).intentFor(call),
+    evaluate: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).evaluate(call),
+    execute: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).execute(call),
+  };
+}
+
 export interface TurnOutcome {
   readonly turnId: TurnId;
   readonly finalText: string;
@@ -371,12 +455,22 @@ export interface HarnessRuntime {
  * DashScope adapter (reads the key at its own boundary); a test injects a scripted one.
  */
 export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntime {
-  const provider = opts.provider ?? new DashScopeProvider();
+  const tracer = opts.tracer;
+  const detailed = opts.detailedTrace === true;
+
+  const baseProvider = opts.provider ?? new DashScopeProvider();
+  // Telemetry decorates the REAL provider. When it is off, no decorator exists and the provider is
+  // the one the composition built — "opt-in" means the code path does not run, not that its output
+  // is thrown away.
+  const provider = tracer
+    ? tracedProvider(baseProvider, tracer, opts.clock, detailed)
+    : baseProvider;
   const client = opts.client ?? new ToolWorkerClient();
   const builtins = opts.builtins ?? BUILTIN_TOOLS;
 
   const registry = registerBuiltins(new ToolRegistry(), builtins);
-  const pipeline = new ToolPipeline({ registry, policy: new PolicyEngine(), client, builtins });
+  const policy = opts.policy ?? new PolicyEngine();
+  const pipeline = new ToolPipeline({ registry, policy, client, builtins });
 
   // The authority this run executes under. It is REQUIRED, not defaulted: a runtime that silently
   // fell back to "no managed restrictions" is precisely the bug this replaced, and a default is how
@@ -398,7 +492,7 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
     actor: MODEL_ACTOR,
   });
 
-  const executor = pipelineExecutor({
+  const builtinExecutor = pipelineExecutor({
     pipeline,
     builtins,
     policyContext,
@@ -419,7 +513,7 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
    * an approved call skips the engine's decision stages.
    */
   const userGate = opts.approvals;
-  const gate: ApprovalGate | undefined =
+  const grantingGate: ApprovalGate | undefined =
     userGate === undefined
       ? undefined
       : {
@@ -431,6 +525,15 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
             return decision;
           },
         };
+  const gate =
+    grantingGate && tracer ? tracedApprovals(grantingGate, tracer, opts.clock) : grantingGate;
+
+  // MCP tools execute through their own executor, but through the SAME engine — so the same hooks,
+  // the same approvals, the same durable intent/result pair, and the same policy engine apply.
+  const routed = opts.mcp ? compositeExecutor(builtinExecutor, opts.mcp) : builtinExecutor;
+  const executor = tracer ? tracedExecutor(routed, tracer, opts.clock, detailed) : routed;
+
+  const hooks = opts.hooks && tracer ? tracedHooks(opts.hooks, tracer, opts.clock) : opts.hooks;
 
   const engine = new TurnEngine({
     provider,
@@ -441,6 +544,10 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
           ...input,
           causationId: (input.causationId ?? null) as never,
         });
+        // The durable log is the SPINE of the trace. Mirroring it here — rather than tracing from
+        // inside the engine — means the trace cannot tell a story the event log contradicts: there
+        // is exactly one source, and telemetry is a reader of it.
+        if (tracer) traceEvent(tracer, event, detailed);
         opts.onEvent?.(event);
         return event;
       },
@@ -449,16 +556,23 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
     ids: opts.ids,
     clock: opts.clock,
     ...(gate ? { approvals: gate } : {}),
+    ...(hooks ? { hooks } : {}),
+    ...(opts.context ? { context: opts.context } : {}),
   });
 
-  // The model-facing tool schemas.
-  const modelTools = builtins
-    .filter((t) => t.availableIn.includes(profile))
-    .map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: toolParametersJsonSchema(t),
-    }));
+  // The model-facing tool schemas: built-ins available in this profile, plus every connected MCP
+  // server's namespaced tools, plus anything the app added (a skill catalog, say).
+  const modelTools: readonly ModelTool[] = [
+    ...builtins
+      .filter((t) => t.availableIn.includes(profile))
+      .map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: toolParametersJsonSchema(t) as Readonly<Record<string, unknown>>,
+      })),
+    ...(opts.mcp?.tools ?? []),
+    ...(opts.extraTools ?? []),
+  ];
 
   return {
     store: opts.store,

@@ -159,6 +159,40 @@ export interface TurnHooks {
   postToolUse(call: { toolName: string; ok: boolean }): Promise<void>;
 }
 
+/**
+ * What a context manager returns for one model round. The engine ADOPTS `items` as its working
+ * conversation before streaming, so cheap reduction (offload/prune) and compaction both persist
+ * across rounds instead of being recomputed from scratch every time.
+ */
+export interface ContextPreparation {
+  /** The conversation to send this round. Pairing must be intact; recent items must be retained. */
+  readonly items: readonly ModelInputItem[];
+  /** used / usable-input-budget, in [0, ∞). Exposed so a client can report real utilization (CX-01). */
+  readonly utilization: number;
+  /** True when threshold/overflow compaction ran this round (CX-03/CX-04). */
+  readonly compacted: boolean;
+  /** Which path triggered compaction, or `null` when only cheap reduction (or nothing) happened. */
+  readonly trigger: 'proactive' | 'reactive-overflow' | null;
+}
+
+/**
+ * The turn engine's view of context management (CX-01..CX-06). An app implements it with
+ * `@qwen-harness/context` — the engine stays pure and simply calls `prepare` before each model
+ * round, then adopts the returned conversation. Absent means no budgeting is wired: the engine
+ * sends the full conversation, exactly as before.
+ */
+export interface ContextManager {
+  prepare(call: {
+    conversation: readonly ModelInputItem[];
+    instructions: string;
+    threadId: ThreadId;
+    turnId: TurnId;
+    correlationId: CorrelationId;
+    permissionProfile: PermissionProfile;
+    signal: AbortSignal;
+  }): Promise<ContextPreparation>;
+}
+
 export interface TurnEngineDeps {
   readonly provider: ModelProvider;
   readonly tools: ToolExecutor;
@@ -170,6 +204,12 @@ export interface TurnEngineDeps {
   readonly hooks?: TurnHooks;
   /** Optional. Absent means there is no approval channel: an `ask` defers, it never auto-allows. */
   readonly approvals?: ApprovalGate;
+  /**
+   * Optional. When present, the engine calls `prepare` before every model round and adopts the
+   * returned conversation, so token budgeting, offload, prune, and compaction happen on real
+   * transcript growth (CX-01..CX-06). Absent means the full conversation is always sent.
+   */
+  readonly context?: ContextManager;
 }
 
 export interface RunTurnInput {
@@ -393,6 +433,30 @@ export class TurnEngine {
 
         if (machine.state !== 'model-streaming') machine.transition('model-streaming');
         this.#persistState(base, machine);
+
+        // Context management BEFORE the request goes out: cheap reduction (offload large tool
+        // outputs, prune safe middle content) then, on real transcript growth past the proactive
+        // threshold or a provider overflow, threshold compaction. The manager persists its own
+        // boundary and compaction items; the engine simply adopts the leaner conversation, so a
+        // reduction taken this round is not undone next round. Absent -> the full conversation goes.
+        if (this.#deps.context) {
+          const prep = await this.#deps.context.prepare({
+            conversation,
+            instructions: ctx.instructions,
+            threadId: base.threadId,
+            turnId: base.turnId,
+            correlationId: base.correlationId,
+            permissionProfile: base.permissionProfile,
+            signal,
+          });
+          if (signal.aborted) {
+            this.#cancel(base, machine);
+            terminalReason = 'user-cancelled';
+            break;
+          }
+          conversation.length = 0;
+          conversation.push(...prep.items);
+        }
 
         sink.append({
           ...base,

@@ -233,6 +233,9 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'tools-builtin',
     'sandbox-linux',
   ],
+  // `cli` is THE composition root, so it is the app that reaches the widest. Every entry below is a
+  // subsystem it must actually construct: a package with no app importing it is a package no user
+  // can reach, and the capability matrix cannot honestly be verified against it.
   cli: [
     'protocol',
     'runtime',
@@ -245,6 +248,20 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'policy',
     'provider-core',
     'sandbox-linux',
+    // Composed into the turn path by `wiring.ts` / `main.ts`.
+    'telemetry',
+    'instructions',
+    'hooks',
+    'skills',
+    'memory',
+    'mcp',
+    // Token budgeting, offload, prune, and compaction, wired into the turn path via a
+    // `ContextManager` the engine calls before every model round (`context.ts`).
+    'context',
+    // NOT declared: `network` and `secret-store`. They back MCP's HTTP/SSE transports and OAuth
+    // token storage, which this app does not construct — only `stdio` servers are launchable from a
+    // config file today. Declaring a dependency the app does not import would be a claim in the
+    // graph that the code does not honour.
   ],
   tui: ['protocol', 'runtime', 'config', 'tui-kit', 'telemetry'],
 

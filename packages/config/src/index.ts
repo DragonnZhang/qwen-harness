@@ -22,6 +22,7 @@ export {
   BudgetsSchema,
   ToolOutputSchema,
   TelemetrySchema,
+  TelemetryLevelSchema,
   DenyEntrySchema,
 } from './schema.ts';
 export type {
@@ -29,6 +30,7 @@ export type {
   Budgets,
   ToolOutput,
   ReasoningEffort,
+  TelemetryLevel,
   Transport,
   PermissionProfile,
 } from './schema.ts';

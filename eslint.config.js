@@ -46,13 +46,13 @@ export default [
       ecmaVersion: 2023,
       sourceType: 'module',
       parserOptions: {
-        projectService: {
-          // `scripts/` is tooling, not a workspace package, so no tsconfig includes it. Type it
-          // against the shared base config rather than an inferred project, otherwise the default
-          // project has no `lib` and modern builtins degrade to `any`, producing false `no-unsafe-*`.
-          allowDefaultProject: ['scripts/*.ts'],
-          defaultProject: 'tsconfig.base.json',
-        },
+        // `scripts/` is tooling, not a workspace package, so the root project-reference graph does
+        // not include it. It has its own `scripts/tsconfig.json` (noEmit, never built) purely so
+        // that `projectService` finds a REAL project for those files and the type-aware security
+        // rules stay armed there. It used to be typed through `allowDefaultProject`, which caps at
+        // 8 files and had reached the cap — past which files silently degrade to an untyped parse,
+        // and `no-unsafe-*` quietly stops protecting the boundary it was added to protect.
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },

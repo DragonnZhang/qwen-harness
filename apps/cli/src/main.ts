@@ -2,13 +2,26 @@ import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveProfile, type CorrelationId, type ThreadId } from '@qwen-harness/protocol';
+import { PolicyEngine, type Grant } from '@qwen-harness/policy';
+import {
+  resolveProfile,
+  type Actor,
+  type ActorId,
+  type CorrelationId,
+  type ThreadId,
+} from '@qwen-harness/protocol';
 import type { ModelProvider } from '@qwen-harness/provider-core';
-import { EnvCredentialSource } from '@qwen-harness/provider-dashscope';
-import { EventStore } from '@qwen-harness/storage';
+import { DASHSCOPE_DEFAULTS, EnvCredentialSource } from '@qwen-harness/provider-dashscope';
+import { BUILTIN_TOOLS } from '@qwen-harness/tools-builtin';
+import { EventStore, createRedactor } from '@qwen-harness/storage';
 
 import { interactiveApprovalGate } from './approvals.ts';
+import { contextUtilizationPercent, createContextManager } from './context.ts';
 import { runDoctor } from './doctor.ts';
+import { createHookRuntime, loadHooks } from './hooks.ts';
+import { composePrompt, loadGuidance } from './instructions.ts';
+import { connectMcp, loadMcpConfiguration, trustServer } from './mcp.ts';
+import { createMemorySurface, memorySectionState } from './memory.ts';
 import { loadRunAuthority, type RunAuthority } from './policy-from-config.ts';
 import {
   exportSession,
@@ -17,7 +30,10 @@ import {
   listSessions,
   reconstructHistory,
 } from './sessions.ts';
-import { createHarnessRuntime, type TurnOutcome } from './wiring.ts';
+import { listStuck, recoverInterrupted, resolveSideEffect } from './side-effects.ts';
+import { createSkillSurface, renderCatalog } from './skills.ts';
+import { listTraceFiles, openTelemetry, readTraceFile } from './telemetry.ts';
+import { createHarnessRuntime, type GrantStore, type TurnOutcome } from './wiring.ts';
 
 /**
  * The CLI argument surface. Kept tiny and explicit; a real getopts layer is a checkpoint-09 polish
@@ -44,6 +60,9 @@ export interface CliDeps {
    */
   readonly provider?: ModelProvider;
 }
+
+/** The actor the model turn's context boundary/compaction items are attributed to. */
+const MODEL_ACTOR: Actor = { kind: 'model', id: 'act_model1' as ActorId };
 
 let idCounter = 0;
 const realIds = {
@@ -73,18 +92,40 @@ export async function main(deps: CliDeps): Promise<number> {
     deps.stdout('  fork <id>              create a new session forked from an existing one');
     deps.stdout('  export <id>            print a session as portable JSONL');
     deps.stdout('');
+    deps.stdout('  trace [--json]         print the local trace (requires telemetry.enabled)');
+    deps.stdout(
+      '  side-effects <id>      list side effects whose outcome is UNKNOWN after a crash',
+    );
+    deps.stdout('  side-effects <id> resolve <sid> --found <completed|failed>');
+    deps.stdout('  instructions           show the AGENTS.md files in effect, with provenance');
+    deps.stdout('  skills                 list discoverable skills');
+    deps.stdout('  memory [add ...]       show long-term memory with provenance, or store one');
+    deps.stdout('  mcp [trust <server>]   show configured MCP servers, or trust a project server');
+    deps.stdout('');
     deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
+    deps.stdout('         --skill <name>  run a skill by name');
     return 0;
   }
 
   if (command === 'doctor') {
-    const report = runDoctor({ projectRoot: deps.cwd, env: deps.env });
+    const report = runDoctor({ projectRoot: deps.cwd, env: deps.env, homeDir: homedir() });
     for (const line of report.lines) deps.stdout(line);
     return report.healthy ? 0 : 3;
   }
 
   if (command === 'run') {
     return runCommand(deps, rest, null);
+  }
+
+  if (
+    command === 'trace' ||
+    command === 'side-effects' ||
+    command === 'instructions' ||
+    command === 'skills' ||
+    command === 'memory' ||
+    command === 'mcp'
+  ) {
+    return inspectCommand(deps, command, rest);
   }
 
   if (command === 'resume') {
@@ -160,15 +201,31 @@ async function runCommand(
   mkdirSync(stateDir, { recursive: true });
   const store = new EventStore({
     path: join(stateDir, 'sessions.sqlite'),
-    clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
+    clock: { now: deps.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) },
     ids: realIds,
     // The redactor needs the credential VALUE to scrub it out of anything we persist. We do not
     // read it from the environment here: `EnvCredentialSource` lives at the provider boundary, the
     // one place permitted to read it (threat model: exactly one reader). Reading `deps.env` — an
     // alias of `process.env` — would have quietly evaded that rule, so the architecture gate now
     // rejects aliased reads too.
-    secrets: [new EnvCredentialSource(undefined, deps.env).read() ?? undefined],
+    secrets: [credential(deps) ?? undefined],
   });
+
+  // CRASH RECOVERY, before anything else can consult `mayExecute` (SS-05).
+  //
+  // Any row the log still calls `in-flight` belongs to a process that no longer exists — we are the
+  // process now, and we did not start it. It becomes `indeterminate`: honest, because we genuinely
+  // do not know whether the write landed. It is NOT promoted to `known-failed`, and it is NEVER
+  // replayed. The most this does is make a stuck side effect VISIBLE, so `side-effects` can list it
+  // and a human can resolve it.
+  const recovered = recoverInterrupted(store);
+  if (recovered.promoted > 0 && !asJson) {
+    deps.stderr(
+      `note: ${recovered.promoted} side effect(s) were interrupted by a previous crash and are now ` +
+        `INDETERMINATE — their outcome is unknown and they will not be re-run. ` +
+        `Inspect them with: qwen-harness side-effects <session>`,
+    );
+  }
 
   try {
     // Resume continues an existing thread; a fresh run creates one. Either way local history is
@@ -221,19 +278,218 @@ async function runCommand(
         ? undefined
         : interactiveApprovalGate({ stdout: deps.stdout, readLine });
 
+    const homeDir = homedir();
+    const clock = {
+      now: deps.now,
+      sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+    };
+
+    // --- telemetry (OB-01/OB-02) -------------------------------------------------------------
+    // Opt-in: with `telemetry.enabled` false this constructs nothing and opens no file, and the
+    // runtime below is handed no tracer, so not one decorator is installed.
+    const telemetry = openTelemetry({
+      enabled: authority.config.telemetry.value,
+      level: authority.config.telemetryLevel.value,
+      retentionDays: authority.config.telemetryRetentionDays.value,
+      dir: join(stateDir, 'trace'),
+      clock,
+      secrets: [credential(deps) ?? undefined],
+    });
+
+    // --- hooks (HK-01..HK-05) ----------------------------------------------------------------
+    const hookConfig = loadHooks({ workspaceRoot: deps.cwd, homeDir });
+    const hooks = createHookRuntime({
+      registrations: hookConfig.registrations,
+      clock,
+      env: deps.env,
+      correlationId: threadId,
+      // Every handler that ran becomes a durable `hook-fired` event, so a hook that blocked a tool
+      // is in the audit trail rather than only in a log line.
+      onFired: (fired) =>
+        void store.append({
+          threadId,
+          correlationId: realIds.next('cor') as CorrelationId,
+          permissionProfile: profile,
+          actor: { kind: 'system', id: 'act_system' as never },
+          payload: {
+            type: 'hook-fired',
+            event: fired.event,
+            handler: fired.handler,
+            outcome: fired.outcome,
+            durationMs: Math.max(0, fired.durationMs),
+          },
+        }),
+    });
+
+    // --- repository instructions (IN-06) ------------------------------------------------------
+    const guidance = loadGuidance({ workspaceRoot: deps.cwd, homeDir });
+    // IN-06: "loading emits InstructionsLoaded". It is a hook event, so a hook can observe exactly
+    // which guidance the agent is about to follow — the point of the event is auditability.
+    if (hooks !== null) {
+      await hooks.fire('InstructionsLoaded', {
+        paths: guidance.sources.map((s) => s.path),
+        data: { count: guidance.sources.length },
+      });
+    }
+
+    // --- skills (IN-01..IN-05) ---------------------------------------------------------------
+    const skills = createSkillSurface({ workspaceRoot: deps.cwd, homeDir, clock });
+
+    // --- memory (MM-01/MM-02/MM-05) -----------------------------------------------------------
+    const redactor = createRedactor([credential(deps) ?? undefined]);
+    const memory = createMemorySurface({
+      workspaceRoot: deps.cwd,
+      homeDir,
+      env: deps.env,
+      clock,
+      redactor,
+    });
+    // Budgeted retrieval against THIS turn's prompt: at most 5 files / 50 KiB (MM-02).
+    const retrieved = await memory.retrieveFor(prompt);
+
+    // --- MCP (MC-01..MC-06) -------------------------------------------------------------------
+    // One policy engine, shared. The MCP executor and the built-in pipeline are judged by the SAME
+    // instance, so "no privileged MCP path" is a property of the object graph, not a promise.
+    const policy = new PolicyEngine();
+
+    // The MCP executor's policy context must see grants the human mints DURING the turn — and the
+    // grant store is owned by the runtime, which does not exist yet because it needs the MCP surface.
+    // The cycle is broken with a ref rather than by giving MCP its own grant store: two grant stores
+    // would mean an approval granted for an MCP call was invisible to policy on the retry, and the
+    // user would be asked the same question forever.
+    const grantsRef: { current: GrantStore | null } = { current: null };
+    const runtimeGrants = (): readonly Grant[] => grantsRef.current?.grants ?? [];
+    const mcpConfig = loadMcpConfiguration({ workspaceRoot: deps.cwd, homeDir });
+    const mcp = await connectMcp({
+      configuration: mcpConfig,
+      clock,
+      ids: realIds,
+      policy,
+      policyContext: () => ({
+        profile,
+        managedPolicy: authority.managedPolicy,
+        rules: authority.rules,
+        grants: runtimeGrants(),
+        workspaceRoot: deps.cwd,
+        homeDir,
+        now: deps.now(),
+        actor: { kind: 'model', id: 'act_model1' as never },
+      }),
+      builtinNames: new Set(BUILTIN_TOOLS.map((t) => t.name)),
+    });
+    for (const failure of mcp?.failed ?? []) {
+      // A broken MCP server degrades the run; it does not end it (MC-06).
+      deps.stderr(`note: MCP server '${failure.server}' did not connect: ${failure.error}`);
+    }
+
+    // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
+    // Composed from sections built from REAL runtime state, each with a deterministic cache key —
+    // not the single hard-coded string literal that used to live here.
+    const toolNames = [
+      ...BUILTIN_TOOLS.filter((t) => t.availableIn.includes(profile)).map((t) => t.name),
+      ...(mcp?.surface.tools ?? []).map((t) => t.name),
+    ];
+    const turnNumber = countTurns(store, threadId) + 1;
+
+    // --- context / compaction (CX-01..CX-06) --------------------------------------------------
+    // The number the CLI used to hard-code as `0`. It is now computed from the reconstructed
+    // history against the provider's real context window (minus reserved headroom), so the prompt's
+    // context section tells the model the truth. `compactions` is read from the durable log.
+    const guidanceChars = guidance.sources.reduce((n, s) => n + s.chars, 0);
+    const utilizationPercent = contextUtilizationPercent(
+      history,
+      DASHSCOPE_DEFAULTS.contextWindowSize,
+      guidanceChars,
+    );
+    const compactions = countCompactions(store, threadId);
+
+    const composed = composePrompt(guidance, {
+      agentName: 'qwen-harness',
+      model,
+      profile,
+      workspaceRoot: deps.cwd,
+      repo: deps.cwd,
+      toolNames,
+      threadId,
+      turn: turnNumber,
+      memory: memorySectionState(retrieved),
+      mcp:
+        mcp && mcp.connected.length > 0
+          ? {
+              servers: mcp.connected.map((c) => c.server),
+              schemaDigest: mcp.surface.tools.map((t) => t.name).join(','),
+            }
+          : null,
+      context: { utilizationPercent, compactions },
+    });
+
+    // The context manager the engine calls before every model round. Large tool outputs offload to
+    // the durable blob store, the transcript prunes, and compaction fires on real transcript growth
+    // past the proactive threshold or on provider overflow — never a forced flag.
+    const contextManager = createContextManager({
+      store,
+      contextWindow: DASHSCOPE_DEFAULTS.contextWindowSize,
+      clock,
+      ids: realIds,
+      actor: MODEL_ACTOR,
+    });
+
     const runtime = createHarnessRuntime({
       workspaceRoot: deps.cwd,
       authority,
       model,
-      instructions:
-        'You are a coding assistant working inside a sandboxed workspace. Use the available tools to inspect and edit files and run commands. Be concise.',
-      homeDir: homedir(),
+      // Sent on EVERY provider request (IN-10). Caching is an optimization over identical content;
+      // it never changes what is transmitted.
+      instructions: composed.instructions,
+      homeDir,
       clock: { now: deps.now },
       ids: realIds,
       store,
+      policy,
+      context: contextManager,
       ...(approvals ? { approvals } : {}),
       ...(deps.provider ? { provider: deps.provider } : {}),
+      ...(telemetry.tracer ? { tracer: telemetry.tracer, detailedTrace: telemetry.detailed } : {}),
+      ...(hooks ? { hooks: hooks.turnHooks } : {}),
+      ...(mcp ? { mcp: mcp.surface } : {}),
     });
+    grantsRef.current = runtime.grants;
+
+    // --- skill invocation (IN-01/IN-05) --------------------------------------------------------
+    // A skill is reached BY NAME through the registry, never by path. Its body is loaded only now —
+    // discovery above read frontmatter only (two-level loading, IN-01). The prepared content is
+    // UNTRUSTED text prepended to the user's turn: it instructs, it does not authorize. The
+    // registry has already intersected the skill's `allowed-tools` with this run's authority, so a
+    // skill asking for a shell inside a `plan` run simply does not get one.
+    let userText = prompt;
+    const skillName = flags['skill'];
+    if (skillName !== undefined) {
+      try {
+        const invocation = skills.invoke({
+          name: skillName,
+          args: positional,
+          invoker: 'user',
+          profile,
+          managed: authority.managedPolicy,
+          toolNames,
+        });
+        userText = `${invocation.content}\n\n---\n\n${prompt}`.trim();
+      } catch (e) {
+        deps.stderr(`run: ${e instanceof Error ? e.message : String(e)}`);
+        return 1;
+      }
+    }
+
+    if (hooks !== null && pending === null) {
+      const submitted = await hooks.fire('UserPromptSubmit', { data: { chars: userText.length } });
+      if (submitted.blocked) {
+        deps.stderr(
+          `run: blocked by hook ${submitted.blockReason?.hookId ?? '(unknown)'}: ` +
+            `${submitted.blockReason?.reason.message ?? 'no reason given'}`,
+        );
+        return 2;
+      }
+    }
 
     const result: TurnOutcome =
       pending !== null
@@ -247,9 +503,14 @@ async function runCommand(
         : await runtime.runTurn({
             threadId,
             correlationId: realIds.next('cor') as CorrelationId,
-            userText: prompt,
+            userText,
             history,
           });
+
+    if (hooks !== null) {
+      await hooks.fire('SessionEnd', { data: { state: result.state } });
+    }
+    await mcp?.close();
 
     // On a non-clean end, surface the underlying failure the engine recorded, so the user (and the
     // logs) see WHY, not just "failed".
@@ -317,6 +578,313 @@ async function runCommand(
 }
 
 /**
+ * The ONE read of the credential value in this app, and it happens at the provider's own boundary.
+ * `EnvCredentialSource` lives in `provider-dashscope`, the only package permitted to read the key
+ * (threat model: exactly one reader; `pnpm architecture` rule 6 enforces it, including for aliased
+ * environments like `deps.env`). The value is used solely to seed redactors — it is never printed,
+ * persisted, or traced.
+ */
+function credential(deps: CliDeps): string | null | undefined {
+  return new EnvCredentialSource(undefined, deps.env).read();
+}
+
+/** How many turns this thread has already had, so the prompt's `session` section is accurate. */
+function countTurns(store: EventStore, threadId: ThreadId): number {
+  return store.readThread(threadId).filter((e) => e.payload.type === 'turn-started').length;
+}
+
+/** How many compactions this thread has recorded, for the prompt's real context status (CX-01). */
+function countCompactions(store: EventStore, threadId: ThreadId): number {
+  return store
+    .readThread(threadId)
+    .filter(
+      (e) => e.payload.type === 'item-appended' && e.payload.item.type === 'compaction',
+    ).length;
+}
+
+/**
+ * The read-only inspection surface (OB-02, OB-03, SS-05, IN-06, MM-01, MC-05).
+ *
+ * Every subsystem this agent wired needed somewhere a human could SEE it. A trace nobody can read,
+ * an indeterminate side effect nobody can list, an `AGENTS.md` whose influence nobody can explain —
+ * each of those is a capability that exists in the code and not in the product.
+ */
+async function inspectCommand(
+  deps: CliDeps,
+  command: string,
+  args: readonly string[],
+): Promise<number> {
+  const { flags, positional } = parseFlags(args);
+  const asJson = 'json' in flags;
+  const homeDir = homedir();
+  const stateDir = join(deps.cwd, '.qwen-harness');
+  const clock = {
+    now: deps.now,
+    sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+  };
+
+  if (command === 'trace') {
+    const dir = join(stateDir, 'trace');
+    const files = listTraceFiles(dir);
+    if (files.length === 0) {
+      deps.stdout(
+        'no trace files. Telemetry is opt-in: set `telemetry.enabled: true` in .qwen-harness/config.json',
+      );
+      return 0;
+    }
+    // Newest day last, which is the order a reader wants.
+    for (const file of files) {
+      const { records, malformed } = readTraceFile(join(dir, file));
+      if (malformed > 0) {
+        // Never quietly swallowed: a trace with an unmentioned hole in it is worse than no trace.
+        deps.stderr(`warning: ${file} has ${malformed} unparseable line(s)`);
+      }
+      for (const record of records) {
+        if (asJson) {
+          deps.stdout(JSON.stringify(record));
+        } else {
+          const fields = Object.entries(record.fields)
+            .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+            .join(' ');
+          deps.stdout(
+            `${new Date(record.ts).toISOString()} ${record.level.padEnd(5)} ${record.category}  ${record.message}${fields ? `  ${fields}` : ''}`,
+          );
+        }
+      }
+    }
+    return 0;
+  }
+
+  if (command === 'instructions') {
+    const guidance = loadGuidance({ workspaceRoot: deps.cwd, homeDir });
+    if (asJson) {
+      deps.stdout(JSON.stringify({ sources: guidance.sources }));
+      return 0;
+    }
+    if (guidance.sources.length === 0) {
+      deps.stdout('no AGENTS.md found (global, user, ancestor, repo-root, or nested)');
+      return 0;
+    }
+    deps.stdout('repository instructions in effect (least specific first):');
+    for (const source of guidance.sources) {
+      deps.stdout(`  [${source.scope}] ${source.path}  (${source.chars} chars)`);
+    }
+    deps.stdout('');
+    deps.stdout('these are CONTEXT, never authority: they cannot grant a tool or lift a deny.');
+    return 0;
+  }
+
+  if (command === 'skills') {
+    const skills = createSkillSurface({ workspaceRoot: deps.cwd, homeDir, clock });
+    if (asJson) {
+      deps.stdout(
+        JSON.stringify({
+          skills: skills.skills.map((s) => ({ name: s.name, source: s.source })),
+          errors: skills.errors,
+        }),
+      );
+      return 0;
+    }
+    if (skills.skills.length === 0) {
+      deps.stdout('no skills found (looked for SKILL.md under .qwen-harness/skills/)');
+    } else {
+      deps.stdout('skills:');
+      for (const line of renderCatalog(skills.catalog())) deps.stdout(`  ${line}`);
+      deps.stdout('');
+      deps.stdout('run one with: qwen-harness run --skill <name> "<prompt>"');
+    }
+    for (const error of skills.errors) {
+      // A skill that failed validation is REPORTED. Silently omitting it would leave the user
+      // wondering why their skill "does nothing".
+      deps.stderr(`  ✗ ${error.name}: ${error.message}`);
+    }
+    return 0;
+  }
+
+  if (command === 'memory') {
+    const redactor = createRedactor([credential(deps) ?? undefined]);
+    const memory = createMemorySurface({
+      workspaceRoot: deps.cwd,
+      homeDir,
+      env: deps.env,
+      clock,
+      redactor,
+    });
+
+    if (positional[0] === 'add') {
+      const name = flags['name'];
+      const description = flags['description'] ?? '';
+      const body = positional.slice(1).join(' ').trim();
+      if (name === undefined || body === '') {
+        deps.stderr('memory add: --name <name> and a body are required');
+        return 1;
+      }
+      const outcome = await memory.add(
+        {
+          name,
+          description,
+          type: (flags['type'] ?? 'project') as never,
+          body,
+        },
+        (flags['scope'] ?? 'project') as never,
+      );
+      if (outcome.kind === 'rejected') {
+        deps.stderr(`memory add: ${outcome.reason}`);
+        return 1;
+      }
+      deps.stdout(`stored ${outcome.memory.name} -> ${outcome.path}`);
+      return 0;
+    }
+
+    const { records, errors } = await memory.list();
+    if (asJson) {
+      deps.stdout(
+        JSON.stringify({
+          memories: records.map((r) => ({
+            name: r.memory.name,
+            type: r.memory.type,
+            scope: r.provenance.scope,
+            path: r.provenance.path,
+          })),
+          errors: errors.map((e) => ({ path: e.path, error: e.error.message })),
+        }),
+      );
+      return 0;
+    }
+    if (records.length === 0) deps.stdout('no memories stored');
+    for (const record of records) {
+      deps.stdout(
+        `  [${record.provenance.scope}] ${record.memory.name} (${record.memory.type})  ${record.provenance.path}`,
+      );
+    }
+    for (const error of errors) deps.stderr(`  ✗ ${error.path}: ${error.error.message}`);
+    return 0;
+  }
+
+  if (command === 'mcp') {
+    const configuration = loadMcpConfiguration({ workspaceRoot: deps.cwd, homeDir });
+
+    if (positional[0] === 'trust') {
+      const server = positional[1];
+      if (server === undefined) {
+        deps.stderr('mcp trust: a server name is required');
+        return 1;
+      }
+      trustServer({ workspaceRoot: deps.cwd, homeDir, server });
+      deps.stdout(`trusted MCP server '${server}' for ${deps.cwd}`);
+      deps.stdout('(recorded in your home directory — a repository cannot trust its own server)');
+      return 0;
+    }
+
+    if (asJson) {
+      deps.stdout(
+        JSON.stringify({
+          servers: configuration.resolved.map((s) => ({
+            name: s.config.name,
+            source: s.source,
+            trusted: s.trusted,
+            active: s.active,
+            inactiveReason: s.inactiveReason,
+          })),
+          sources: configuration.sources,
+        }),
+      );
+      return 0;
+    }
+    if (configuration.resolved.length === 0) {
+      deps.stdout('no MCP servers configured (.qwen-harness/mcp.json)');
+      return 0;
+    }
+    for (const server of configuration.resolved) {
+      const status = server.active ? '✓ active' : `· inactive (${server.inactiveReason})`;
+      deps.stdout(`  ${server.config.name}  [${server.source}]  ${status}`);
+    }
+    return 0;
+  }
+
+  // side-effects
+  const [threadArg, sub, sideEffectId] = positional;
+  if (threadArg === undefined) {
+    deps.stderr('side-effects: a session id is required');
+    return 1;
+  }
+  const threadId = threadArg as ThreadId;
+  const store = new EventStore({
+    path: join(stateDir, 'sessions.sqlite'),
+    clock,
+    ids: realIds,
+    secrets: [credential(deps) ?? undefined],
+  });
+
+  try {
+    if (store.getThread(threadId) === undefined) {
+      deps.stderr(`side-effects: no such session ${threadId}`);
+      return 1;
+    }
+
+    // Promote anything a dead process left `in-flight`, so the list below is complete.
+    recoverInterrupted(store);
+
+    if (sub === 'resolve') {
+      const found = flags['found'];
+      if (sideEffectId === undefined || (found !== 'completed' && found !== 'failed')) {
+        deps.stderr(
+          'side-effects resolve: usage: side-effects <session> resolve <side-effect-id> ' +
+            '--found <completed|failed>',
+        );
+        return 1;
+      }
+      try {
+        const outcome = resolveSideEffect(store, {
+          threadId,
+          sideEffectId,
+          finding: found,
+          correlationId: realIds.next('cor') as CorrelationId,
+          actorId: 'act_user01',
+        });
+        deps.stdout(`${sideEffectId} recorded as ${outcome.state}`);
+        if (found === 'failed') {
+          deps.stderr(
+            'note: this action may now be re-run. If it had in fact SUCCEEDED, re-running it will ' +
+              'apply it a second time.',
+          );
+        }
+        return 0;
+      } catch (e) {
+        deps.stderr(`side-effects: ${e instanceof Error ? e.message : String(e)}`);
+        return 1;
+      }
+    }
+
+    const stuck = listStuck(store, threadId);
+    if (asJson) {
+      deps.stdout(JSON.stringify({ threadId, indeterminate: stuck }));
+      return 0;
+    }
+    if (stuck.length === 0) {
+      deps.stdout('no indeterminate side effects in this session');
+      return 0;
+    }
+    deps.stdout('side effects whose outcome is UNKNOWN (a process died while they were running):');
+    deps.stdout('');
+    for (const effect of stuck) {
+      deps.stdout(
+        `  ${effect.id}  ${effect.destructive ? '[DESTRUCTIVE]' : '[non-destructive]'}  ${effect.normalizedAction}`,
+      );
+    }
+    deps.stdout('');
+    deps.stdout('These will NOT be re-run, and nothing will guess what happened. Go and look at');
+    deps.stdout('the workspace, then record what you FOUND:');
+    deps.stdout('');
+    deps.stdout(`  qwen-harness side-effects ${threadId} resolve <id> --found completed`);
+    deps.stdout(`  qwen-harness side-effects ${threadId} resolve <id> --found failed`);
+    return 0;
+  } finally {
+    store.close();
+  }
+}
+
+/**
  * `sessions` / `fork` / `export` — reads over the durable log. None of these run the model; they
  * are pure inspections and transformations of what is already persisted.
  */
@@ -324,7 +892,7 @@ function sessionCommand(deps: CliDeps, command: string, args: readonly string[])
   const stateDir = join(deps.cwd, '.qwen-harness');
   const store = new EventStore({
     path: join(stateDir, 'sessions.sqlite'),
-    clock: { now: deps.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) },
+    clock: { now: deps.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) },
     ids: realIds,
     // The redactor needs the credential VALUE to scrub it out of anything we persist. We do not
     // read it from the environment here: `EnvCredentialSource` lives at the provider boundary, the

@@ -16,20 +16,20 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@qwen-harness/config": "workspace:*",
-    "@qwen-harness/protocol": "workspace:*",
-    "@qwen-harness/runtime": "workspace:*",
-    "@qwen-harness/telemetry": "workspace:*",
-    "@qwen-harness/tui-kit": "workspace:*",
     "@types/react": "^19.2.17",
     "esbuild": "0.25.10",
     "ink": "7.1.0",
     "ink-testing-library": "4.0.0",
     "node-pty": "1.1.0",
-    "react": "19.2.7"
+    "react": "19.2.7",
+    "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/runtime": "workspace:*",
+    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/tui-kit": "workspace:*",
+    "@qwen-harness/telemetry": "workspace:*"
   },
   "bin": {
-    "qwen-harness-tui": "./dist/tui.bundle.mjs"
+    "qwen-harness-tui": "./dist/bin.js"
   },
   "devDependencies": {
     "@qwen-harness/testkit": "workspace:*"

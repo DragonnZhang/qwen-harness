@@ -33,3 +33,59 @@ export {
   loadRunAuthority,
   type RunAuthority,
 } from './policy-from-config.ts';
+
+// The subsystems this composition root makes reachable. Exported so they can be tested against the
+// real production path (and embedded), never as a second, test-only entry point into the runtime.
+export {
+  openTelemetry,
+  pruneTraces,
+  readTraceFile,
+  listTraceFiles,
+  traceFileName,
+  traceEvent,
+  tracedProvider,
+  tracedExecutor,
+  TELEMETRY_OFF,
+  type TelemetryHandle,
+} from './telemetry.ts';
+export {
+  recoverInterrupted,
+  listStuck,
+  resolveSideEffect,
+  SideEffectNotFound,
+  type StuckSideEffect,
+  type Finding,
+} from './side-effects.ts';
+export {
+  loadGuidance,
+  composePrompt,
+  type LoadedGuidance,
+  type ComposedPrompt,
+} from './instructions.ts';
+export {
+  loadHooks,
+  createHookRuntime,
+  HookConfigSchema,
+  HookConfigError,
+  type HookRuntime,
+  type LoadedHooks,
+} from './hooks.ts';
+export { createSkillSurface, renderCatalog, type SkillSurface } from './skills.ts';
+export {
+  createMemorySurface,
+  memorySectionState,
+  type MemorySurface,
+  type AddOutcome,
+} from './memory.ts';
+export {
+  loadMcpConfiguration,
+  connectMcp,
+  trustServer,
+  loadTrustedServers,
+  trustFilePath,
+  McpFileSchema,
+  McpConfigError,
+  type McpConfiguration,
+  type ConnectedMcp,
+} from './mcp.ts';
+export { compositeExecutor, type McpSurface, type ModelTool } from './wiring.ts';

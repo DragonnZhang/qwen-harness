@@ -1,0 +1,35 @@
+{
+  // `scripts/` is tooling, not a workspace package: it is deliberately absent from the ROOT
+  // project-reference graph, so `tsc --build` does not compile it and it ships nowhere.
+  //
+  // It still needs a real tsconfig, for one reason: typescript-eslint's type-aware rules are the
+  // mechanism behind several of this repo's SECURITY rules (no unsafe `any` at a trust boundary, no
+  // floating promises). These files used to be typed through `allowDefaultProject`, which caps at 8
+  // files and had reached the cap — past which files silently degrade to an untyped parse and
+  // `no-unsafe-*` quietly stops protecting the boundary it exists to protect.
+  //
+  // `references` is load-bearing, not decoration. `scripts/migrate-config.ts` imports
+  // `@qwen-harness/config`, whose `types` point at `dist/index.d.ts` — which does not exist in a
+  // CLEAN CLONE, because `pnpm check` runs `lint` BEFORE `build`. Without the reference, TypeScript
+  // cannot resolve the import, every value from it becomes the `error` type, and the type-aware
+  // rules fire on ~40 lines. With it, TS redirects resolution to the referenced project's SOURCE and
+  // the lint is correct on a tree that has never been built. (Found by the clean-clone gate.)
+  //
+  // `composite: false` / `noEmit`: this project is never referenced BY anything and never emits. It
+  // exists to be read.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"],
+  "references": [
+    {
+      "path": "../packages/config"
+    }
+  ]
+}

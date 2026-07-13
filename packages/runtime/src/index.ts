@@ -34,4 +34,6 @@ export type {
   ApprovalRequest,
   ApprovalDecision,
   ApprovalRisk,
+  ContextManager,
+  ContextPreparation,
 } from './turn-engine.ts';

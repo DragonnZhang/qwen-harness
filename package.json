@@ -13,7 +13,7 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "tsc --build --force",
-    "build": "tsc --build",
+    "build": "tsc --build && pnpm -r --if-present run build",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:security": "vitest run --project security",
@@ -22,14 +22,22 @@
     "test:live": "bash scripts/test-live.sh",
     "test:performance": "vitest run --project performance",
     "test:migrations": "vitest run --project migrations",
+    "test:packaging": "vitest run --project packaging",
     "architecture": "tsx scripts/architecture.ts",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm architecture && pnpm build && pnpm test && pnpm test:integration && pnpm test:security && pnpm test:migrations && pnpm test:pty && pnpm test:e2e && pnpm test:performance && pnpm secrets:scan",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm architecture && pnpm build && pnpm test && pnpm test:integration && pnpm test:security && pnpm test:migrations && pnpm test:pty && pnpm test:e2e && pnpm test:performance && pnpm test:packaging && pnpm secrets:scan",
     "secrets:scan": "tsx scripts/secret-scan.ts",
     "doctor": "node apps/cli/dist/bin.js doctor",
     "probe:host": "bash scripts/probe-host.sh",
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "release": "tsx scripts/release.ts",
+    "release:package": "tsx scripts/package-cli.ts",
+    "release:sbom": "tsx scripts/sbom.ts",
+    "support-bundle": "tsx scripts/support-bundle.ts",
     "clean": "rm -rf packages/*/dist apps/*/dist packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo *.tsbuildinfo"
   },
   "devDependencies": {
+    "@qwen-harness/config": "workspace:*",
+    "@qwen-harness/testkit": "workspace:*",
     "@types/node": "24.10.1",
     "@typescript-eslint/eslint-plugin": "8.46.0",
     "@typescript-eslint/parser": "8.46.0",
@@ -39,6 +47,7 @@
     "prettier": "3.9.5",
     "tsx": "4.23.0",
     "typescript": "5.9.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "yaml": "2.8.3"
   }
 }

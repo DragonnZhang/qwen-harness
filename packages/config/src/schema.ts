@@ -109,9 +109,25 @@ export const ToolOutputSchema = z
   })
   .partial();
 
+/**
+ * Trace verbosity (OB-02). Structurally identical to `@qwen-harness/telemetry`'s `TraceLevel`, and
+ * declared HERE rather than imported: `config` is layer 1 and may not depend on a layer-2 domain
+ * package. The app maps one onto the other at the composition root, where the two meet.
+ */
+export const TelemetryLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+export type TelemetryLevel = z.infer<typeof TelemetryLevelSchema>;
+
 export const TelemetrySchema = z.strictObject({
   /** Telemetry is opt-in (OB-02). The built-in default is `false`. */
   enabled: z.boolean(),
+  /**
+   * Verbosity. `debug` additionally records redacted model INPUT ITEMS and tool arguments; `info`
+   * records their shape (counts, digests, names) but not their content. Everything at every level
+   * passes the redactor first — the level changes how much is written, never whether it is safe.
+   */
+  level: TelemetryLevelSchema.optional(),
+  /** Retention (OB-02). Trace files older than this many days are deleted when a trace is opened. */
+  retentionDays: PositiveInt.optional(),
 });
 
 /**

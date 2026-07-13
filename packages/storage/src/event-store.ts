@@ -460,6 +460,41 @@ export class EventStore {
       destructive: r.destructive === 1,
     }));
   }
+
+  // -------------------------------------------------------------------------
+  // Offloaded blobs (TL-10 / CX-02)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Durably store an offloaded large tool output, addressed by a content DIGEST rather than a path
+   * (so a reference held in a transcript can never be a traversal vector). The digest is computed by
+   * the caller — `storage` owns no hash (its IO_OWNERS entry does not include `node:crypto`), so the
+   * content package's `stableHash` produces it. Content is redacted before it lands, exactly like an
+   * event payload: an offloaded shell result may contain the very secret we scrub everywhere else.
+   *
+   * Idempotent by digest: writing identical content twice is a no-op, so re-offloading the same
+   * output across successive rounds never duplicates a blob.
+   */
+  putBlob(digest: string, content: string): { digest: string; bytes: number } {
+    const redacted = this.#redactor.redact(content);
+    const bytes = Buffer.byteLength(redacted, 'utf8');
+    this.#db
+      .prepare(
+        `INSERT INTO blobs (digest, bytes, content, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(digest) DO NOTHING`,
+      )
+      .run(digest, bytes, Buffer.from(redacted, 'utf8'), this.#clock.now());
+    return { digest, bytes };
+  }
+
+  /** Retrieve an offloaded blob by digest, or `undefined` when it was never stored. */
+  readBlob(digest: string): string | undefined {
+    const row = this.#db.prepare('SELECT content FROM blobs WHERE digest = ?').get(digest) as
+      | { content: Buffer }
+      | undefined;
+    return row === undefined ? undefined : row.content.toString('utf8');
+  }
 }
 
 // ---------------------------------------------------------------------------

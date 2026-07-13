@@ -16,6 +16,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "zod": "4.4.3",
     "@qwen-harness/protocol": "workspace:*",
     "@qwen-harness/runtime": "workspace:*",
     "@qwen-harness/storage": "workspace:*",
@@ -24,8 +25,7 @@
     "@qwen-harness/provider-dashscope": "workspace:*",
     "@qwen-harness/tools-builtin": "workspace:*",
     "@qwen-harness/sandbox-linux": "workspace:*",
-    "@qwen-harness/cli": "workspace:*",
-    "zod": "4.4.3"
+    "@qwen-harness/cli": "workspace:*"
   },
   "bin": {
     "qwen-harness-daemon": "./dist/bin.js"

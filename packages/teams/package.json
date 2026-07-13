@@ -16,12 +16,12 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@qwen-harness/agents": "workspace:*",
-    "@qwen-harness/policy": "workspace:*",
+    "zod": "4.4.3",
     "@qwen-harness/protocol": "workspace:*",
+    "@qwen-harness/policy": "workspace:*",
     "@qwen-harness/storage": "workspace:*",
     "@qwen-harness/tasks": "workspace:*",
-    "zod": "4.4.3"
+    "@qwen-harness/agents": "workspace:*"
   },
   "devDependencies": {
     "@qwen-harness/testkit": "workspace:*"

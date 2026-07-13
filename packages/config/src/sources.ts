@@ -131,7 +131,9 @@ export const BUILTIN_DEFAULTS: ConfigDoc = {
     mcpInlineTokens: 25_000,
     mcpDurableChars: 500_000,
   },
-  telemetry: { enabled: false },
+  // Opt-in (OB-02): nothing is traced until a config source says `enabled: true`. `level` and
+  // `retentionDays` therefore describe what WOULD be written; they change nothing while disabled.
+  telemetry: { enabled: false, level: 'info', retentionDays: 7 },
 
   // `ask` is the default profile (defaults.md: `default` maps to `ask`), workspace-write isolation,
   // network denied until granted.

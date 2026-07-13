@@ -5,8 +5,13 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "dist"],
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "dist"
+  ],
   "references": [
     {
       "path": "../../packages/protocol"
@@ -40,6 +45,27 @@
     },
     {
       "path": "../../packages/sandbox-linux"
+    },
+    {
+      "path": "../../packages/telemetry"
+    },
+    {
+      "path": "../../packages/instructions"
+    },
+    {
+      "path": "../../packages/hooks"
+    },
+    {
+      "path": "../../packages/skills"
+    },
+    {
+      "path": "../../packages/memory"
+    },
+    {
+      "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../packages/context"
     }
   ]
 }
