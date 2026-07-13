@@ -3,10 +3,13 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "lib": ["ES2023", "DOM"]
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "dist"],
+  "exclude": ["src/**/*.test.ts", "dist", "src/**/*.test.tsx"],
   "references": [
     { "path": "../../packages/protocol" },
     { "path": "../../packages/runtime" },

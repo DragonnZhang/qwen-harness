@@ -34,7 +34,10 @@ function newStore(): EventStore {
   return store;
 }
 
-function managerOptions(store: EventStore, over: Partial<Parameters<typeof createContextManager>[0]> = {}) {
+function managerOptions(
+  store: EventStore,
+  over: Partial<Parameters<typeof createContextManager>[0]> = {},
+) {
   return {
     store,
     contextWindow: 2000,

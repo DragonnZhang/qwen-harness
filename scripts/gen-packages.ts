@@ -116,18 +116,40 @@ for (const [name, deps] of Object.entries(PACKAGE_DEPS) as [PackageName, Package
 
   await writeFormattedJson(pkgPath, pkg);
 
+  // Preserve hand-authored compiler options and excludes, exactly as we preserve custom scripts
+  // above. This is not hypothetical: `apps/tui` needs `jsx`/`jsxImportSource`/`lib` and a `*.test.tsx`
+  // exclude to compile its Ink components (ADR 0004), and a regeneration that dropped them silently
+  // broke the TUI build — the source still typechecked from its own project references, but a clean
+  // `pnpm build` could not compile a single `.tsx` file. The generator owns the workspace wiring
+  // (`extends`, `references`, `outDir`/`rootDir`/`tsBuildInfoFile`, the base `include`); anything a
+  // package added on top of that wins.
+  const tsconfigPath = join(dir, 'tsconfig.json');
+  const existingTsconfig = existsSync(tsconfigPath)
+    ? (JSON.parse(readFileSync(tsconfigPath, 'utf8')) as Record<string, unknown>)
+    : {};
+  const existingCompilerOptions =
+    (existingTsconfig['compilerOptions'] as Record<string, unknown> | undefined) ?? {};
+  const existingExclude = (existingTsconfig['exclude'] as string[] | undefined) ?? [];
+
   const tsconfig = {
     extends: '../../tsconfig.base.json',
     compilerOptions: {
+      // Generator-owned paths first, then any custom options the package added (custom wins).
       outDir: './dist',
       rootDir: './src',
       tsBuildInfoFile: './dist/.tsbuildinfo',
+      ...Object.fromEntries(
+        Object.entries(existingCompilerOptions).filter(
+          ([k]) => !['outDir', 'rootDir', 'tsBuildInfoFile'].includes(k),
+        ),
+      ),
     },
     include: ['src/**/*'],
-    exclude: ['src/**/*.test.ts', 'dist'],
+    // The generator guarantees these excludes exist; a package may add more (e.g. `*.test.tsx`).
+    exclude: [...new Set(['src/**/*.test.ts', 'dist', ...existingExclude])],
     references: deps.map((d) => ({ path: `../../${locate(d)}` })),
   };
-  await writeFormattedJson(join(dir, 'tsconfig.json'), tsconfig);
+  await writeFormattedJson(tsconfigPath, tsconfig);
 }
 
 // Root solution tsconfig references every package so `tsc --build` walks the whole graph.

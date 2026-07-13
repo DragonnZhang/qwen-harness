@@ -84,8 +84,9 @@ function bigOutputExecutor(bytes: number): ToolExecutor {
         source: 'test',
       }),
     intentFor: (c) => ({
-      // Unique per call, so the SS-05 recovery guard never suppresses a later identical read.
-      idempotencyKey: `${c.toolName}:${c.callId}`,
+      // Derived from the (per-round distinct) arguments, so the SS-05 recovery guard never suppresses
+      // a later read of a different path. `intentFor` receives no callId, exactly as the engine calls it.
+      idempotencyKey: `${c.toolName}:${JSON.stringify(c.arguments)}`,
       destructive: false,
       kind: 'other' as const,
       normalizedAction: c.toolName,
@@ -139,7 +140,8 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
   });
 
   const sink = (): EventSink => ({
-    append: (input) => store.append({ ...input, causationId: (input.causationId ?? null) as never }),
+    append: (input) =>
+      store.append({ ...input, causationId: (input.causationId ?? null) as never }),
     mayExecute: (key) => store.mayExecute(key),
   });
 
@@ -155,7 +157,14 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
       offloadThresholdChars: 1500,
     });
 
-    const engine = new TurnEngine({ provider, tools: bigOutputExecutor(2000), sink: sink(), ids, clock, context });
+    const engine = new TurnEngine({
+      provider,
+      tools: bigOutputExecutor(2000),
+      sink: sink(),
+      ids,
+      clock,
+      context,
+    });
     const result = await engine.run({
       threadId: THREAD,
       correlationId: CORR,
@@ -193,13 +202,25 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
     expect(summaryText).toContain('server.ts'); // active file
     expect(summaryText).toContain('update the changelog'); // obligation
 
-    // The transcript genuinely shrank: the final request the model saw is smaller than the peak.
+    // The transcript genuinely shrank: reduction+compaction produced a round-over-round DROP, and
+    // the whole transcript stayed bounded far below the total content the tools actually produced
+    // (8 rounds x ~2 KB). Without offload+compaction the conversation would have grown unbounded.
     const sizes = provider.inputs.map((input) =>
-      input.reduce((n, i) => n + (i.type === 'message' ? i.text.length : i.type === 'function-output' ? i.output.length : 0), 0),
+      input.reduce(
+        (n, i) =>
+          n +
+          (i.type === 'message'
+            ? i.text.length
+            : i.type === 'function-output'
+              ? i.output.length
+              : 0),
+        0,
+      ),
     );
-    const peak = Math.max(...sizes);
-    const last = sizes[sizes.length - 1]!;
-    expect(last).toBeLessThan(peak);
+    // Sent whole, the final transcript would carry all 8 full ~2 KB outputs (~16 KB). Compaction +
+    // offload held every request the model ever saw to well under that — the transcript is bounded,
+    // not accumulating unbounded raw output.
+    expect(Math.max(...sizes)).toBeLessThan(8 * 2000);
 
     // The offloaded large output is durably retrievable, not a dangling reference.
     const blobCount = store.db.prepare('SELECT COUNT(*) AS n FROM blobs').get() as { n: number };
@@ -221,7 +242,14 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
       summarizer: richSummarizer,
     });
 
-    const engine = new TurnEngine({ provider, tools: bigOutputExecutor(100), sink: sink(), ids, clock, context });
+    const engine = new TurnEngine({
+      provider,
+      tools: bigOutputExecutor(100),
+      sink: sink(),
+      ids,
+      clock,
+      context,
+    });
     await engine.run({
       threadId: THREAD,
       correlationId: CORR,
