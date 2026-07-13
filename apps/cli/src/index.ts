@@ -136,3 +136,26 @@ export {
   type SupervisorResult,
   type CronListItem,
 } from './scheduler.ts';
+
+// The multi-agent TEAM subsystem (golden path 5): a lead launches REAL sandboxed teammates in
+// isolated git worktrees, routes plan/permission approvals over a durable protocol bus, resolves
+// concurrent claiming, and shuts down cleanly. Exported so it is tested against the production path.
+export {
+  runLead,
+  runTeammate,
+  teamStatus,
+  teamThreadId,
+  teammateAuthority,
+  readResults,
+  parseTaskSpecs,
+  LEAD_ID,
+  type TeamDeps,
+  type LeadOptions,
+  type LeadSummary,
+  type MemberSummary,
+  type TeammateOptions,
+  type TeammateSummary,
+  type MemberStatus,
+  type TeamResult,
+  type TaskSpec,
+} from './team.ts';

@@ -37,7 +37,10 @@
     "@qwen-harness/context": "workspace:*",
     "@qwen-harness/tasks": "workspace:*",
     "@qwen-harness/background": "workspace:*",
-    "@qwen-harness/scheduler": "workspace:*"
+    "@qwen-harness/scheduler": "workspace:*",
+    "@qwen-harness/teams": "workspace:*",
+    "@qwen-harness/agents": "workspace:*",
+    "@qwen-harness/worktrees": "workspace:*"
   },
   "bin": {
     "qwen-harness": "./dist/bin.js"

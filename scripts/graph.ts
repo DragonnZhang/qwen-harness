@@ -264,6 +264,14 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'tasks',
     'background',
     'scheduler',
+    // The multi-agent TEAM subsystem (`team.ts`): a lead creates dependent tasks, launches REAL
+    // sandboxed teammates each in its OWN git worktree, routes plan/permission approvals over a
+    // durable protocol bus, resolves concurrent claiming, receives results, and shuts down cleanly.
+    // `teams` provides the inbox/protocol/recovery, `agents` the authority-intersection ceiling for a
+    // teammate, `worktrees` the real per-teammate isolation. (`teams` already re-uses `tasks`.)
+    'teams',
+    'agents',
+    'worktrees',
     // NOT declared: `network` and `secret-store`. They back MCP's HTTP/SSE transports and OAuth
     // token storage, which this app does not construct — only `stdio` servers are launchable from a
     // config file today. Declaring a dependency the app does not import would be a claim in the

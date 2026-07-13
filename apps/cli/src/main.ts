@@ -65,6 +65,14 @@ import {
   startTask,
 } from './tasks.ts';
 import { createSkillSurface, renderCatalog } from './skills.ts';
+import {
+  parseTaskSpecs,
+  runLead,
+  runTeammate,
+  teamStatus,
+  type LeadOptions,
+  type TeamDeps,
+} from './team.ts';
 import { listTraceFiles, openTelemetry, readTraceFile } from './telemetry.ts';
 import { createHarnessRuntime, type GrantStore, type TurnOutcome } from './wiring.ts';
 
@@ -99,6 +107,13 @@ export interface CliDeps {
    * needs to prove the ceiling binds scheduled/background work supplies a managed file here.
    */
   readonly managedPath?: string;
+  /**
+   * The worker script the team LEAD re-invokes (as a real, separate OS process) to run each teammate.
+   * Injected exactly like `managedPath`: `bin.ts` never sets it, so a teammate is always a genuine
+   * `process.execPath` child running `main('team teammate …')`, never an in-process fake. A `team run`
+   * without it fails fast rather than pretending to launch teammates.
+   */
+  readonly teamWorker?: string;
 }
 
 /** The actor the model turn's context boundary/compaction items are attributed to. */
@@ -156,6 +171,16 @@ export async function main(deps: CliDeps): Promise<number> {
       '  cron list | remove <id> | run [--now <ms>]   run = one supervisor poll, fires due jobs',
     );
     deps.stdout('');
+    deps.stdout(
+      "  team run --team <n> --members <k> --tasks '<json>' [--profile <p>] [--keep-worktrees]",
+    );
+    deps.stdout(
+      '       lead: create dependent tasks, launch isolated teammates in worktrees, approve, collect',
+    );
+    deps.stdout(
+      '  team status --team <n> [--now <ms>]   member incarnations: running/lost/stopped',
+    );
+    deps.stdout('');
     deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
     deps.stdout('         --skill <name>  run a skill by name');
     return 0;
@@ -205,6 +230,10 @@ export async function main(deps: CliDeps): Promise<number> {
 
   if (command === 'cron') {
     return cronCommand(deps, rest);
+  }
+
+  if (command === 'team') {
+    return teamCommand(deps, rest);
   }
 
   deps.stderr(`unknown command: ${command}`);
@@ -1524,8 +1553,151 @@ async function cronCommand(deps: CliDeps, args: readonly string[]): Promise<numb
   }
 }
 
+/** `team ...` — the multi-agent team subsystem (golden path 5): lead, teammate worker, and status. */
+async function teamCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
+  const { flags, positional } = parseFlags(args);
+  const asJson = 'json' in flags;
+  const [sub] = positional;
+
+  if (sub === 'status') {
+    const team = flags['team'];
+    if (team === undefined) {
+      deps.stderr('team status: --team <name> is required');
+      return 1;
+    }
+    const store = openStore(deps);
+    try {
+      const now = flags['now'] !== undefined ? Number(flags['now']) : deps.now();
+      const members = teamStatus(store, team, Number.isFinite(now) ? now : deps.now());
+      if (asJson) {
+        deps.stdout(JSON.stringify({ team, members }));
+        return 0;
+      }
+      if (members.length === 0) deps.stdout('no team members recorded');
+      for (const m of members) {
+        deps.stdout(`${m.member}  [${m.state}]  incarnation=${m.incarnation}`);
+      }
+      return 0;
+    } finally {
+      store.close();
+    }
+  }
+
+  const store = openStore(deps);
+  try {
+    const authority = authorityForCommand(deps, flags);
+    const teamDeps: TeamDeps = {
+      store,
+      ids: realIds,
+      clock: clockOf(deps),
+      homeDir: homedir(),
+      cwd: deps.cwd,
+    };
+
+    if (sub === 'teammate') {
+      const member = flags['member'];
+      const incarnation = flags['incarnation'];
+      const worktree = flags['worktree'];
+      const team = flags['team'];
+      if (
+        member === undefined ||
+        incarnation === undefined ||
+        worktree === undefined ||
+        team === undefined
+      ) {
+        deps.stderr('team teammate: --team, --member, --incarnation, --worktree are required');
+        return 1;
+      }
+      // The lead-granted profile is re-clamped to managed policy HERE, so the ceiling binds this
+      // process even if the launching lead were compromised. `authorityOf` builds the ceiling.
+      const grantedAuthority = authorityOf(authority, worktree);
+      const summary = await runTeammate(teamDeps, {
+        team,
+        member,
+        incarnation,
+        worktree,
+        grantedAuthority,
+        now: deps.now(),
+      });
+      deps.stdout(JSON.stringify(summary));
+      return 0;
+    }
+
+    if (sub === 'run') {
+      const team = flags['team'];
+      if (team === undefined) {
+        deps.stderr('team run: --team <name> is required');
+        return 1;
+      }
+      if (deps.teamWorker === undefined) {
+        deps.stderr(
+          'team run: no teammate worker configured (a teammate must run as a REAL separate process)',
+        );
+        return 2;
+      }
+      const members = Number(flags['members'] ?? '2');
+      if (!Number.isInteger(members) || members < 1) {
+        deps.stderr('team run: --members must be a positive integer');
+        return 1;
+      }
+      let tasks: ReturnType<typeof parseTaskSpecs>;
+      try {
+        tasks = parseTaskSpecs(flags['tasks'] ?? '[]');
+      } catch (e) {
+        deps.stderr(`team run: invalid --tasks: ${e instanceof Error ? e.message : String(e)}`);
+        return 1;
+      }
+      if (tasks.length === 0) {
+        deps.stderr('team run: --tasks must declare at least one task');
+        return 1;
+      }
+      const requested =
+        flags['teammate-profile'] !== undefined
+          ? (resolveProfile(flags['teammate-profile']) ?? authority.profile)
+          : authority.profile;
+      const leadOpts: LeadOptions = {
+        team,
+        tasks,
+        members,
+        requestedProfile: requested,
+        worker: deps.teamWorker,
+        now: deps.now(),
+        ...(deps.managedPath !== undefined ? { managedPath: deps.managedPath } : {}),
+        ...('keep-worktrees' in flags ? { keepWorktrees: true } : {}),
+      };
+      const summary = await runLead(teamDeps, authority, leadOpts);
+      if (asJson) {
+        deps.stdout(JSON.stringify(summary));
+      } else {
+        deps.stdout(
+          `team ${summary.team}: ${summary.tasksCompleted}/${summary.tasksCreated} tasks completed`,
+        );
+        for (const m of summary.members) {
+          deps.stdout(
+            `  ${m.member}  profile=${m.grantedProfile}  exit=${m.exitCode}  removed=${m.worktreeRemoved}`,
+          );
+        }
+      }
+      // A clean run leaves no leaked worktree and completes every task; that is exit 0.
+      const clean =
+        summary.cleanShutdown &&
+        summary.worktreesLeaked === 0 &&
+        summary.tasksCompleted === summary.tasksCreated;
+      return clean ? 0 : 2;
+    }
+
+    deps.stderr('team: expected run|teammate|status');
+    return 1;
+  } catch (e) {
+    deps.stderr(`team: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
+  } finally {
+    store.close();
+  }
+}
+
 /** Flags that never take a value. Everything else consumes the following token. */
-const BOOLEAN_FLAGS = new Set(['json', 'quiet', 'no-color']);
+const BOOLEAN_FLAGS = new Set(['json', 'quiet', 'no-color', 'keep-worktrees']);
 
 function parseFlags(args: readonly string[]): {
   flags: Record<string, string>;

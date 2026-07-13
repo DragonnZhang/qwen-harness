@@ -50,6 +50,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@qwen-harness/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
       '@qwen-harness/background':
         specifier: workspace:*
         version: link:../../packages/background
@@ -101,6 +104,9 @@ importers:
       '@qwen-harness/tasks':
         specifier: workspace:*
         version: link:../../packages/tasks
+      '@qwen-harness/teams':
+        specifier: workspace:*
+        version: link:../../packages/teams
       '@qwen-harness/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -113,6 +119,9 @@ importers:
       '@qwen-harness/tools-core':
         specifier: workspace:*
         version: link:../../packages/tools-core
+      '@qwen-harness/worktrees':
+        specifier: workspace:*
+        version: link:../../packages/worktrees
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -240,6 +249,9 @@ importers:
       '@qwen-harness/cli':
         specifier: workspace:*
         version: link:../apps/cli
+      '@qwen-harness/context':
+        specifier: workspace:*
+        version: link:../packages/context
       '@qwen-harness/policy':
         specifier: workspace:*
         version: link:../packages/policy
