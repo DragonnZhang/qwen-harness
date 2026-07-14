@@ -16,16 +16,29 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **65** |
-| IN_PROGRESS | 83 | 68 |
-| REQUIRED | 57 | 45 |
+| **VERIFIED** | 38 | **69** |
+| IN_PROGRESS | 83 | 66 |
+| REQUIRED | 57 | 43 |
 
-At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **65** with
+At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
 the `P` gap; +3 from the installation/packaging guide closing `D` on PK-01/02/04; +5 near-misses
 (ER-07 orphan-process + recovery-secret, PS-03 grant expiry/revocation, MC-04 annotation property,
 BG-01 classifier, AG-10 shutdown-releases-in-flight); +1 (ER-03, the audit had missed the committed
 live retry test); +3 live tests (CX-03, CX-04, MC-01). The TUI is now a real streaming session.
+
+**UI-04 (the `/`, `@`, `!` completion/action surface) is now VERIFIED** — the last additions built
+three real editor surfaces with U/S/T/E evidence, not relabeling: a slash-command registry (`/`) with
+a component-level nav test and a compiled-bundle PTY test; `@` file completion confined to the
+workspace with inert `SafeText` display (unit + PTY); and a `!` DIRECT USER SHELL ACTION that runs
+through the real sandboxed pipeline with the user as policy actor and NO model turn. The `!` path
+added `HarnessRuntime.runUserShell` (reusing the wired pipeline/policy/worker), proven against the
+REAL bubblewrap sandbox in `apps/cli/test/integration/user-shell.test.ts`: it runs a command, audits
+a redacted `user-shell` item as the user, is stopped by a managed shell-deny, and never streams the
+model; the shipped bundle is exercised over a real PTY in `apps/tui/test/pty/shell-action.test.ts`.
+Two more real races were found and fixed while making the PTY tests deterministic (a menu ROW renders
+in the unfiltered `/` menu, so an executing Enter must gate on the editor's echoed buffer line, not a
+row's presence — otherwise Enter fired on the wrong command).
 
 **The live tests found a product-breaking bug** (fixed at `54ec115`): `TurnEngine.#drive` fed the
 model the assistant's text but never its function-CALL items, so any multi-round task requiring the
@@ -34,7 +47,7 @@ answer) looped until budget-exhausted. Every prior test passed only because none
 a result. This is the seventh and most severe "correct-looking but broken" defect this project
 surfaced by running the real thing rather than trusting green unit suites.
 
-The remaining 113 rows are still genuinely not verifiable today — a required evidence class is absent
+The remaining 109 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
