@@ -49,11 +49,16 @@ driving the compiled TUI bundle.
 **All ten golden paths are done** (1 coding loop, 2 recovery, 3 permissions, 4 long context, 5 team
 execution, 6 scheduling, 7 MCP incl. HTTP+OAuth, 8 TUI over PTY, 9 live model, 10 fresh install).
 
-1. **The final audit (checkpoint 10).** This is the remaining work. Go row by row through
-   `docs/product/capability-matrix.md` and flip a row to `VERIFIED` ONLY where its declared evidence
-   kinds (U/P/I/S/E/T/L/D/F) are actually satisfied by a committed, reproducible test. Produce the
-   final report: exact commands, durations, evidence, commit IDs, and an honest list of any row that
-   still cannot be verified and why.
+1. **The final audit (checkpoint 10) — IN PROGRESS.** Six-auditor pass done; matrix is being driven
+   up row by row as evidence lands. **48 VERIFIED / 74 IN_PROGRESS / 56 REQUIRED** as of `d72979c`
+   (was 38 at the audit; +10 from generative property tests closing the `P` gap on RT-02, RT-09,
+   PS-04, HK-03, HK-04, SB-04, AG-08, AG-13, BG-04, MC-06). The TUI is now a real streaming session
+   (`run` mode, live test `evals/live/tui-stream.test.ts`).
+
+   Next cheapest wins (each a near-miss the audit flagged as one small test away): ER-07 (orphan-
+   process assertion + recovery-specific secret test), MC-04 (annotation-classification property),
+   PS-03 (grant expiry/revocation integration), BG-01 (classifier integration), AG-10 (graceful-
+   shutdown fault path), PK-01/02/04 (a documentation citation each — the `docs/guide/` set exists).
 2. **Known smaller gaps to weigh during the audit** (honest, not blockers to naming done-ness but to
    be recorded):
    - evals test files (`fresh-install`, `long-context`) are NOT in the `pnpm typecheck` graph, so a
