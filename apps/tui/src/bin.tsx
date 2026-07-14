@@ -19,6 +19,7 @@ import { ItemSchema, sanitize, type Item } from '@qwen-harness/protocol';
 
 import { App } from './App.tsx';
 import { DEMO_ITEMS } from './demo.ts';
+import { createLiveTurn } from './live-turn.ts';
 import { LiveApp } from './live.tsx';
 import { createScriptedTurn, type LiveController } from './scripted-turn.ts';
 import { arraySource, emitterSource } from './source.ts';
@@ -90,6 +91,13 @@ function selectRoot(mode: StatusModel['mode']): {
 
   if (process.argv.includes('--scripted-turn')) {
     const controller = createScriptedTurn(mode);
+    return { element: <LiveApp controller={controller} />, controller };
+  }
+
+  // LIVE mode: a real interactive session against qwen3.7-max through the real sandboxed pipeline.
+  // `run` (or `--live`) enters it; the credential is read at the provider boundary on the first turn.
+  if (process.argv.includes('run') || process.argv.includes('--live')) {
+    const controller = createLiveTurn({ mode, cwd: process.cwd() });
     return { element: <LiveApp controller={controller} />, controller };
   }
 

@@ -13,9 +13,12 @@
   "references": [
     { "path": "../../packages/protocol" },
     { "path": "../../packages/provider-core" },
+    { "path": "../../packages/provider-dashscope" },
     { "path": "../../packages/runtime" },
     { "path": "../../packages/config" },
     { "path": "../../packages/tui-kit" },
-    { "path": "../../packages/telemetry" }
+    { "path": "../../packages/telemetry" },
+    { "path": "../../packages/storage" },
+    { "path": "../../apps/cli" }
   ]
 }

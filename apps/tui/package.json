@@ -24,10 +24,13 @@
     "react": "19.2.7",
     "@qwen-harness/protocol": "workspace:*",
     "@qwen-harness/provider-core": "workspace:*",
+    "@qwen-harness/provider-dashscope": "workspace:*",
     "@qwen-harness/runtime": "workspace:*",
     "@qwen-harness/config": "workspace:*",
     "@qwen-harness/tui-kit": "workspace:*",
-    "@qwen-harness/telemetry": "workspace:*"
+    "@qwen-harness/telemetry": "workspace:*",
+    "@qwen-harness/storage": "workspace:*",
+    "@qwen-harness/cli": "workspace:*"
   },
   "bin": {
     "qwen-harness-tui": "./dist/bin.js"

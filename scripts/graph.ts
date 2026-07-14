@@ -280,7 +280,17 @@ export const PACKAGE_DEPS: Record<PackageName, PackageName[]> = {
     'network',
     'secret-store',
   ],
-  tui: ['protocol', 'provider-core', 'runtime', 'config', 'tui-kit', 'telemetry'],
+  tui: [
+    'protocol',
+    'provider-core',
+    'provider-dashscope',
+    'runtime',
+    'config',
+    'tui-kit',
+    'telemetry',
+    'storage',
+    'cli',
+  ],
 
   // Test-only.
   //

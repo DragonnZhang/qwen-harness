@@ -21,5 +21,8 @@
     "@qwen-harness/tasks": "workspace:*",
     "@qwen-harness/cli": "workspace:*",
     "@qwen-harness/testkit": "workspace:*"
+  },
+  "devDependencies": {
+    "node-pty": "1.1.0"
   }
 }
