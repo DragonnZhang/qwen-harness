@@ -112,7 +112,7 @@ Sources: [s05](https://learn.shareai.run/en/s05/), [s12](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | WK-01 | A turn-local todo checklist supports pending/in-progress/completed, `activeForm`, ordering, visibility in TUI, and preservation through compaction. | U,I,T,E | IN_PROGRESS |
-| WK-02 | Legacy `TodoWrite` semantics remain usable while the preferred durable task API is Create/Get/Update/List; the two systems are not conflated. | U,I,E,D | IN_PROGRESS |
+| WK-02 | Legacy `TodoWrite` semantics remain usable while the preferred durable task API is Create/Get/Update/List; the two systems are not conflated. | U,I,E,D | VERIFIED |
 | WK-03 | Durable tasks store high-water ID, subject, description, active form, owner, status, blocks, blockedBy, metadata, timestamps, and audit provenance independently. | U,P,I | VERIFIED |
 | WK-04 | Task state transitions, claim, release, complete, delete, and owner-loss recovery are validated by a state machine. | U,P,I,F | VERIFIED |
 | WK-05 | A task cannot begin until all dependencies complete; completing upstream reports newly unblocked work. Cycles and missing references are rejected. | U,P,I,E | VERIFIED |

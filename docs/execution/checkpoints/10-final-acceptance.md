@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **85** |
-| IN_PROGRESS | 83 | 52 |
+| **VERIFIED** | 38 | **86** |
+| IN_PROGRESS | 83 | 51 |
 | REQUIRED | 57 | 41 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -199,7 +199,17 @@ here as a real open issue. **Honest status: the live lane is functional (credent
 MCP all work live) but the gate is not green; item 4 requires tuning the coding-loop/compaction live
 budgets for the current model and fixing the tui-stream streaming race.**
 
-The remaining 93 rows are still genuinely not verifiable today — a required evidence class is absent
+**WK-02 (durable tasks vs legacy todos) is now VERIFIED** — gaps were E and D. Added
+`evals/e2e/tasks.test.ts` (E — a durable dependency graph through `main()`: create with `--blocked-by`,
+a bulk `task todo` write that mutates NO durable task, `task list` still holding exactly the two tasks,
+then `complete` reporting the dependent as `newlyUnblocked` and `get` showing it `pending`) and the D
+via the new CLI command documentation in `docs/guide/cli.md` (the durable `task` API and the
+turn-local `task todo` checklist documented as explicitly separate). U/I were already real
+(`packages/tasks/src/todo.test.ts`, `apps/cli/test/integration/durable-work.test.ts`). This session
+also documented the previously-undocumented `task`/`skills`/`memory`/`trace`/`mcp`/`background`/`cron`
+commands in cli.md (definition-of-done item 10 progress; satisfies the D class for those surfaces).
+
+The remaining 92 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)

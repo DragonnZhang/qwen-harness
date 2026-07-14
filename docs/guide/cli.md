@@ -150,7 +150,8 @@ Legacy turn-local `TodoWrite` semantics remain usable and stay SEPARATE from the
 bulk `task todo` write never mutates a durable task:
 
 ```sh
-qwen-harness task todo --set "read code" --set "fix bug" --set "run tests"   # turn-local checklist
+# A turn-local checklist, given as a JSON array; it produces a projection and touches no durable task.
+qwen-harness task todo '[{"content":"read code","activeForm":"Reading code"}]'
 ```
 
 ### `skills` — two-level skill loading
