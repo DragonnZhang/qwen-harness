@@ -87,6 +87,9 @@ export function App({
           config={editorConfig}
           history={history}
           isActive={!dialogOpen}
+          mode={status.mode}
+          model={status.model}
+          cwd={status.cwd}
         />
       )}
     </Box>

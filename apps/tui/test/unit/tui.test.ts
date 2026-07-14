@@ -188,3 +188,69 @@ describe('demo transcript fixture', () => {
     }
   });
 });
+
+/**
+ * Slash-command menu arrow-navigation, tested DETERMINISTICALLY at the component level (UI-04).
+ *
+ * The PTY test proves the menu renders/filters/executes/refuses-injection over a real terminal, but
+ * arrow-nav timing under a loaded host is flaky in a PTY. ink-testing-library drives the real Editor
+ * synchronously, so "Down moves the highlight and Enter runs the SECOND match" is proven without any
+ * terminal-timing race. `/mode` and `/model` both match the query `mo`, in that order.
+ */
+describe('slash-command menu navigation (UI-04)', () => {
+  const SAFE = (s) => s; // Editor sanitizes for display; the test passes plain strings as props.
+  const DOWN = `${String.fromCharCode(27)}[B`;
+
+  function mountMenu(onCycleMode) {
+    return mount(
+      h(Editor, {
+        onSubmit: vi.fn(),
+        onInterrupt: vi.fn(),
+        onExit: vi.fn(),
+        onCycleMode,
+        busy: false,
+        mode: 'ask',
+        model: SAFE('qwen3.7-max'),
+        cwd: SAFE('/repo'),
+      }),
+    );
+  }
+
+  it('Enter on the first match runs it (/mode → cycles the mode)', async () => {
+    const onCycleMode = vi.fn();
+    const { stdin, lastFrame } = mountMenu(onCycleMode);
+    for (const ch of '/mode') stdin.write(ch);
+    await tick();
+    // The menu lists both /mode and /model (prefix "mode" matches both).
+    expect(lastFrame()).toContain('/model');
+    stdin.write(ENTER);
+    await tick();
+    expect(onCycleMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('Down then Enter runs the SECOND match (/model → prints the model panel)', async () => {
+    const onCycleMode = vi.fn();
+    const { stdin, lastFrame } = mountMenu(onCycleMode);
+    for (const ch of '/mode') stdin.write(ch);
+    await tick();
+    stdin.write(DOWN); // highlight moves to /model (index 1)
+    await tick();
+    stdin.write(ENTER); // runs /model, which opens the notice panel
+    await tick();
+    // /model printed the model panel (not /mode — onCycleMode was NOT called).
+    expect(lastFrame()).toContain('model:');
+    expect(onCycleMode).not.toHaveBeenCalled();
+  });
+
+  it('injected non-command text after / is never executed', async () => {
+    const onCycleMode = vi.fn();
+    const { stdin, lastFrame } = mountMenu(onCycleMode);
+    for (const ch of '/notacommand') stdin.write(ch);
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    // Nothing ran: no mode cycle, no model panel.
+    expect(onCycleMode).not.toHaveBeenCalled();
+    expect(lastFrame()).not.toContain('model:');
+  });
+});
