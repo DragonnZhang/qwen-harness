@@ -186,7 +186,11 @@ coherent text (compaction's was mid-task: "the output was truncated, let me get 
 count") — consistent with the live model's non-deterministic, verbose exploration hitting a turn/budget
 limit (the compaction test deliberately grows a large transcript). The DETERMINISTIC equivalents
 (`evals/e2e/coding-loop.test.ts`, `long-context.test.ts`) and all ten golden paths and the full
-`pnpm check` are green, so the tool pipeline (including the TL-08 refactor) is sound; and (c)
+`pnpm check` are green, so the tool pipeline (including the TL-08 refactor) is sound. The one TL-08
+concurrency risk was checked and CLEARED: `ToolWorkerClient.run` spawns a fresh sandboxed worker and a
+private scratch dir PER CALL (`packages/tool-worker/src/client.ts:25-29`), so `#runParallelBatch`'s
+concurrent `tools.execute` calls are fully independent — a live round with 2+ reads cannot corrupt
+them. And (c)
 `tui-stream` timed out after 120s waiting for the streamed response, emitting a React
 "setState while rendering" warning from the live streaming path. That warning does NOT reproduce in
 the deterministic TUI unit/PTY suites and is not in any code path this session changed (for a plain
