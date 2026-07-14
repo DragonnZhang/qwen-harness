@@ -132,6 +132,73 @@ qwen-harness export thr_m4x8c2a0001 > session.jsonl
 
 Unknown id: `export: no such session: <id>` (exit `1`).
 
+### `task` — durable tasks and legacy todos
+
+Two separate systems that are never conflated (WK-02). The DURABLE dependency graph is the preferred
+API:
+
+```sh
+qwen-harness task create "build the parser" --active "Building the parser"   # -> {id: 1, ...}
+qwen-harness task create "write docs" --blocked-by 1                          # depends on task 1
+qwen-harness task list --json          # every task with status/owner/blockedBy
+qwen-harness task get 1 --json
+qwen-harness task claim 1              # atomic — a second claimant is rejected, not silently shared
+qwen-harness task update 1 --status completed   # unblocks its dependents
+```
+
+Legacy turn-local `TodoWrite` semantics remain usable and stay SEPARATE from the durable graph — a
+bulk `task todo` write never mutates a durable task:
+
+```sh
+qwen-harness task todo --set "read code" --set "fix bug" --set "run tests"   # turn-local checklist
+```
+
+### `skills` — two-level skill loading
+
+Lists the skills discovered from `SKILL.md` frontmatter under `.qwen-harness/skills/` (and the user,
+managed, plugin, and bundled sources, in that precedence). The catalog reads frontmatter ONLY; a
+skill's body is loaded only when it is invoked (IN-01). An invalid frontmatter is reported, never
+silently dropped (IN-04).
+
+```sh
+qwen-harness skills --json                        # {skills:[{name,source}], errors:[...]}
+qwen-harness run --skill review-pr "check my diff" # loads the skill body and prepends it to the prompt
+```
+
+### `memory` — long-term memory
+
+```sh
+qwen-harness memory                                       # list stored memories with provenance
+qwen-harness memory add --name pnpm-usage --description "Build/test with pnpm" "Run pnpm build then test."
+qwen-harness memory consolidate                           # dedup + conflict-resolve, delete superseded files
+```
+
+Retrieval is automatic and budgeted (5 files / 50 KiB per turn, MM-02); `consolidate` keeps the newer
+of any same-named pair and removes the loser (MM-04). A memory containing a secret is refused (MM-03).
+
+### `trace` — the local telemetry trace
+
+Prints the redacted JSONL trace (requires `telemetry.enabled`, OB-02). See
+[Observability](operations.md#telemetry).
+
+```sh
+qwen-harness trace            # human-readable: timestamp, level, category, message, fields
+qwen-harness trace --json     # one JSON record per line
+```
+
+### `mcp` — configured MCP servers
+
+```sh
+qwen-harness mcp                     # list configured servers and their tools
+qwen-harness mcp trust <server>      # trust a server (recorded in your home dir, never by a repo)
+```
+
+### `background` and `cron`
+
+`background` manages detached tool jobs (list/output/stop); `cron` manages five-field scheduled jobs
+(add/list/remove) whose authority is the intersection of their creation-time ceiling and current
+managed policy (PS-08). Both are durable and survive a supervisor restart.
+
 ## Flags
 
 Flags may be written `--key value` or `--key=value`. `--json` is a boolean and never swallows the
