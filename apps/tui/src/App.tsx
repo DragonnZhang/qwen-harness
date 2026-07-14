@@ -36,6 +36,7 @@ export interface AppProps {
   readonly onSubmit?: (text: string) => void;
   readonly onInterrupt?: () => void;
   readonly onApprovalDecision?: (decision: ApprovalDecision) => void;
+  readonly onCycleMode?: () => void;
   readonly editorConfig?: Partial<EditorConfig>;
   readonly history?: readonly string[];
 }
@@ -47,6 +48,7 @@ export function App({
   onSubmit,
   onInterrupt,
   onApprovalDecision,
+  onCycleMode,
   editorConfig,
   history,
 }: AppProps): ReactElement {
@@ -80,6 +82,7 @@ export function App({
           onSubmit={(text) => onSubmit?.(text)}
           onInterrupt={() => onInterrupt?.()}
           onExit={exit}
+          onCycleMode={onCycleMode}
           busy={status.activity === 'busy'}
           config={editorConfig}
           history={history}

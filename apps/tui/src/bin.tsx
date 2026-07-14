@@ -15,7 +15,7 @@
 import { render } from 'ink';
 import type { ReactElement } from 'react';
 
-import { ItemSchema, sanitize, type Item } from '@qwen-harness/protocol';
+import { ItemSchema, resolveProfile, sanitize, type Item } from '@qwen-harness/protocol';
 
 import { App } from './App.tsx';
 import { DEMO_ITEMS } from './demo.ts';
@@ -127,8 +127,25 @@ function selectRoot(mode: StatusModel['mode']): {
   };
 }
 
+/**
+ * Resolve the launch approval profile from argv. `--profile <plan|ask|auto-accept-edits|yolo>` (via
+ * {@link resolveProfile}, so aliases work too) selects any of the four; `--yolo` is a shortcut for
+ * `--profile yolo`; the default is `ask`. An unrecognised `--profile` value is ignored rather than
+ * bricking startup — the managed ceiling still binds whatever profile is chosen at the first turn.
+ */
+function launchMode(argv: readonly string[]): StatusModel['mode'] {
+  const flagIndex = argv.indexOf('--profile');
+  if (flagIndex !== -1) {
+    const raw = argv[flagIndex + 1];
+    const resolved = raw === undefined ? undefined : resolveProfile(raw);
+    if (resolved !== undefined) return resolved;
+  }
+  if (argv.includes('--yolo')) return 'yolo';
+  return 'ask';
+}
+
 function main(): void {
-  const mode: StatusModel['mode'] = process.argv.includes('--yolo') ? 'yolo' : 'ask';
+  const mode: StatusModel['mode'] = launchMode(process.argv);
   const { element, controller } = selectRoot(mode);
 
   const instance = render(element, { exitOnCtrlC: false });

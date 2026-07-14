@@ -68,6 +68,7 @@ export function Editor({
   onSubmit,
   onInterrupt,
   onExit,
+  onCycleMode,
   busy = false,
   config,
   history = [],
@@ -76,6 +77,7 @@ export function Editor({
   onSubmit: (text: string) => void;
   onInterrupt: () => void;
   onExit: () => void;
+  onCycleMode?: (() => void) | undefined;
   busy?: boolean;
   config?: Partial<EditorConfig> | undefined;
   history?: readonly string[] | undefined;
@@ -106,6 +108,13 @@ export function Editor({
       }
 
       if (armed) setArmed(false);
+
+      // Shift+Tab cycles the approval mode (plan→ask→auto-accept-edits→yolo→plan). Ink decodes the
+      // backtab sequence (ESC [ Z) as tab+shift; it carries no printable input, so it never inserts.
+      if (key.tab && key.shift) {
+        onCycleMode?.();
+        return;
+      }
 
       if (key.escape) {
         if (busy) onInterrupt();

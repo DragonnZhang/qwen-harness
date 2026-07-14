@@ -36,6 +36,7 @@ import {
   sanitize,
   type CorrelationId,
   type HarnessEvent,
+  type PermissionProfile,
   type ThreadId,
   type TurnId,
 } from '@qwen-harness/protocol';
@@ -48,7 +49,7 @@ import { EnvCredentialSource } from '@qwen-harness/provider-dashscope';
 import { EventStore } from '@qwen-harness/storage';
 
 import type { ApprovalPrompt, StatusModel } from './types.ts';
-import type { LiveController, LiveView } from './scripted-turn.ts';
+import { nextProfile, type LiveController, type LiveView } from './scripted-turn.ts';
 import { emitterSource, type MutableSource } from './source.ts';
 
 const MODEL = 'qwen3.7-max';
@@ -98,6 +99,12 @@ export interface LiveTurnOptions {
    * continues the SAME conversation via `reconstructHistory`.
    */
   readonly resume?: { readonly threadId: ThreadId } | undefined;
+  /**
+   * Override the managed-policy path (defaults to the OS-wide managed file). TEST-ONLY: it lets a
+   * unit test point the ceiling at a temp `managed.json`, so a runtime mode switch can be proven to
+   * clamp against a real administrator policy without touching `/etc`.
+   */
+  readonly managedPath?: string | undefined;
 }
 
 /**
@@ -156,18 +163,36 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
     secrets: [new EnvCredentialSource().read() ?? undefined],
   });
 
-  let authority: RunAuthority;
-  try {
-    authority = loadRunAuthority({
-      projectRoot: cwd,
-      homeDir: homedir(),
-      env: process.env,
-      cli: { permissionProfile: mode },
-    });
-  } catch {
-    // A broken config must not brick the UI; fall back to a bare profile authority.
-    authority = loadRunAuthority({ projectRoot: cwd, homeDir: homedir(), env: {}, cli: {} });
-  }
+  const managedPath = opts.managedPath;
+  // Re-derive the authority for a REQUESTED profile. `loadRunAuthority` applies precedence and clamps
+  // to the managed ceiling, so `authority.profile` is the EFFECTIVE (possibly downgraded) profile —
+  // a requested `yolo` under `maxProfile: plan` comes back as `plan`. This is the one place the mode
+  // is turned into authority; nothing downstream re-derives it.
+  const loadAuthorityFor = (profile: PermissionProfile): RunAuthority => {
+    try {
+      return loadRunAuthority({
+        projectRoot: cwd,
+        homeDir: homedir(),
+        env: process.env,
+        cli: { permissionProfile: profile },
+        ...(managedPath !== undefined ? { managedPath } : {}),
+      });
+    } catch {
+      // A broken config must not brick the UI; fall back to a bare profile authority.
+      return loadRunAuthority({
+        projectRoot: cwd,
+        homeDir: homedir(),
+        env: {},
+        cli: {},
+        ...(managedPath !== undefined ? { managedPath } : {}),
+      });
+    }
+  };
+
+  // The REQUESTED profile is what the user cycles through; `authority.profile` is what the ceiling
+  // allows. They diverge exactly when a managed policy clamps the request.
+  let requestedProfile: PermissionProfile = mode;
+  let authority: RunAuthority = loadAuthorityFor(requestedProfile);
 
   const baseStatus = (activity: StatusModel['activity']): StatusModel => ({
     cwd: sanitize(cwd, { origin: 'user', multiline: false, maxLength: 80 }).text,
@@ -254,19 +279,24 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
     source.push(item);
   };
 
-  const runtime: HarnessRuntime = createHarnessRuntime({
-    workspaceRoot: cwd,
-    authority,
-    model: authority.config.model.value || MODEL,
-    instructions: INSTRUCTIONS,
-    homeDir: homedir(),
-    clock: { now: () => Date.now() },
-    ids,
-    store,
-    provider: teeProvider(defaultProvider(authority), onStream),
-    approvals,
-    onEvent,
-  });
+  // Built from the CURRENT `authority`. Cycling the mode reassigns `authority` and rebuilds this so
+  // the next turn runs under the re-derived (ceiling-clamped) policy and provider.
+  const buildRuntime = (): HarnessRuntime =>
+    createHarnessRuntime({
+      workspaceRoot: cwd,
+      authority,
+      model: authority.config.model.value || MODEL,
+      instructions: INSTRUCTIONS,
+      homeDir: homedir(),
+      clock: { now: () => Date.now() },
+      ids,
+      store,
+      provider: teeProvider(defaultProvider(authority), onStream),
+      approvals,
+      onEvent,
+    });
+
+  let runtime: HarnessRuntime = buildRuntime();
 
   const pushUser = (text: string): void => {
     userSeq += 1;
@@ -357,6 +387,16 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
       };
     },
     submit,
+    cycleMode() {
+      // Advance the REQUEST and re-derive real authority; the ceiling clamps it (yolo under
+      // maxProfile:plan comes back as plan). Rebuild the runtime so the change takes effect on the
+      // NEXT turn — an in-flight turn already captured the previous runtime and is left untouched.
+      requestedProfile = nextProfile(requestedProfile);
+      authority = loadAuthorityFor(requestedProfile);
+      runtime = buildRuntime();
+      // Reflect the CLAMPED profile (authority.profile) immediately, preserving activity/approval.
+      setView({ status: baseStatus(view.status.activity), approval: view.approval });
+    },
     interrupt() {
       abort?.abort(new Error('interrupted by user'));
     },

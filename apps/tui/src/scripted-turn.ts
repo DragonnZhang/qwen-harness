@@ -20,12 +20,14 @@
 
 import {
   ItemSchema,
+  PermissionProfileSchema,
   sanitize,
   type Actor,
   type ActorId,
   type CorrelationId,
   type IdSource,
   type Item,
+  type PermissionProfile,
   type ThreadId,
 } from '@qwen-harness/protocol';
 import type {
@@ -255,6 +257,20 @@ function durableSink(source: ReturnType<typeof emitterSource>): DurableSink {
 // The controller the Ink app binds to
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Advance the approval mode one step around the fixed cycle plan→ask→auto-accept-edits→yolo→plan.
+ *
+ * The order is `PermissionProfileSchema.options` — the single source of truth for the four canonical
+ * profiles — so this can never drift from the enum. This is a REQUEST: a caller with a real managed
+ * ceiling (see {@link LiveController.cycleMode}) re-derives authority from the returned profile, which
+ * the ceiling then clamps. Callers with no real authority (the scripted controller) just display it.
+ */
+export function nextProfile(current: PermissionProfile): PermissionProfile {
+  const cycle = PermissionProfileSchema.options;
+  const index = cycle.indexOf(current);
+  return cycle[(index + 1) % cycle.length] ?? current;
+}
+
 /** What `live.tsx` renders. `status` and `approval` are React state; `source` drives the transcript. */
 export interface LiveView {
   readonly status: StatusModel;
@@ -268,6 +284,12 @@ export interface LiveController {
   subscribeView(listener: () => void): () => void;
   /** Submit user text — starts the next scripted turn as a genuine engine run. */
   submit(text: string): void;
+  /**
+   * Cycle the approval mode one step (plan→ask→auto-accept-edits→yolo→plan), effective on the NEXT
+   * turn. The live controller re-derives authority through `loadRunAuthority` and rebuilds the real
+   * runtime, so the ceiling clamps the result and the status line shows the CLAMPED profile.
+   */
+  cycleMode(): void;
   /** Interrupt in-flight work: aborts the current turn's signal (cancellation, not a kill). */
   interrupt(): void;
   /** Answer the pending approval dialog. Resolves the engine's awaited `ApprovalGate.request`. */
@@ -361,10 +383,13 @@ export function createScriptedTurn(mode: StatusModel['mode']): LiveController {
   const clock = counterClock();
   const tools = scriptedTools(DIFF);
 
+  // The scripted controller has no real authority to clamp, so the mode is purely cosmetic here —
+  // cycling just advances the displayed profile so the status line re-renders (UI-06).
+  let currentMode = mode;
   const baseStatus = (activity: StatusModel['activity']): StatusModel => ({
     cwd: sanitize(process.cwd(), { origin: 'user', multiline: false, maxLength: 80 }).text,
     model: sanitize(MODEL, { origin: 'user', multiline: false }).text,
-    mode,
+    mode: currentMode,
     activity,
     contextTokens: null,
   });
@@ -445,7 +470,7 @@ export function createScriptedTurn(mode: StatusModel['mode']): LiveController {
       .run({
         threadId: THREAD_ID,
         correlationId: CORRELATION_ID,
-        permissionProfile: mode,
+        permissionProfile: currentMode,
         model: MODEL,
         instructions: INSTRUCTIONS,
         history: [],
@@ -473,6 +498,10 @@ export function createScriptedTurn(mode: StatusModel['mode']): LiveController {
       };
     },
     submit,
+    cycleMode() {
+      currentMode = nextProfile(currentMode);
+      setView({ status: baseStatus(view.status.activity), approval: view.approval });
+    },
     interrupt() {
       abort?.abort(new Error('user-interrupt'));
     },

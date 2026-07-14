@@ -32,6 +32,7 @@ export function LiveApp({ controller }: { controller: LiveController }): ReactEl
       onSubmit={(text) => controller.submit(text)}
       onInterrupt={() => controller.interrupt()}
       onApprovalDecision={(decision) => controller.decide(decision)}
+      onCycleMode={() => controller.cycleMode()}
     />
   );
 }

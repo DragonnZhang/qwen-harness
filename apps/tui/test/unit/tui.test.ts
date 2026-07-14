@@ -155,6 +155,22 @@ describe('Editor key handling (UI-03/UI-07)', () => {
     expect(onInterrupt).toHaveBeenCalledTimes(1);
     expect(onExit).not.toHaveBeenCalled();
   });
+
+  it('Shift+Tab cycles the approval mode and inserts nothing (UI-06)', async () => {
+    const onCycleMode = vi.fn();
+    const onSubmit = vi.fn();
+    // ESC [ Z is the backtab (Shift+Tab) sequence; Ink decodes it as tab+shift.
+    const SHIFT_TAB = `${String.fromCharCode(27)}[Z`;
+    const { lastFrame, stdin } = mount(
+      h(Editor, { onSubmit, onInterrupt: vi.fn(), onExit: vi.fn(), onCycleMode, busy: false }),
+    );
+    stdin.write(SHIFT_TAB);
+    await tick();
+    expect(onCycleMode).toHaveBeenCalledTimes(1);
+    // It is a command, not text: the buffer stays empty and nothing was submitted.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(lastFrame()).not.toContain('[Z');
+  });
 });
 
 /**
