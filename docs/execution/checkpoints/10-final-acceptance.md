@@ -14,16 +14,28 @@ with reproducible evidence. **That bar is not met.** After a rigorous, conservat
 (six independent auditors, each required to cite the specific committed test satisfying *every*
 evidence class a row declares, and to mark a row NOT-YET whenever any class lacked a real test):
 
-| Status | Count |
-| --- | --- |
-| **VERIFIED** | **38** |
-| IN_PROGRESS | 83 |
-| REQUIRED | 57 |
+| Status | Count (at audit) | Count (current) |
+| --- | --- | --- |
+| **VERIFIED** | 38 | **60** |
+| IN_PROGRESS | 83 | 71 |
+| REQUIRED | 57 | 47 |
 
-So **38 of 178 rows** are verified to the matrix's own standard. The remaining 140 are genuinely
-not verifiable today — not for lack of auditing, but because a required evidence class is absent or
-the behavior itself is unimplemented. This document records exactly which, and why, so the gap is a
-work-list rather than a vague "more testing needed."
+At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **60** with
+real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
+the `P` gap; +3 from the installation/packaging guide closing `D` on PK-01/02/04; +5 near-misses
+(ER-07 orphan-process + recovery-secret, PS-03 grant expiry/revocation, MC-04 annotation property,
+BG-01 classifier, AG-10 shutdown-releases-in-flight); +1 (ER-03, the audit had missed the committed
+live retry test); +3 live tests (CX-03, CX-04, MC-01). The TUI is now a real streaming session.
+
+**The live tests found a product-breaking bug** (fixed at `54ec115`): `TurnEngine.#drive` fed the
+model the assistant's text but never its function-CALL items, so any multi-round task requiring the
+model to CONSUME a tool result (read a file then edit, grep then fix, call an MCP tool then use the
+answer) looped until budget-exhausted. Every prior test passed only because none required consuming
+a result. This is the seventh and most severe "correct-looking but broken" defect this project
+surfaced by running the real thing rather than trusting green unit suites.
+
+The remaining 118 rows are still genuinely not verifiable today — a required evidence class is absent
+or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
 
