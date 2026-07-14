@@ -8,11 +8,19 @@ import type {
   ProviderStreamEvent,
 } from '@qwen-harness/provider-core';
 import { freezeCapabilities } from '@qwen-harness/provider-core';
+import {
+  PolicyEngine,
+  actionDigest,
+  revokeGrant,
+  type Grant,
+  type NormalizedAction,
+  type PolicyContext,
+} from '@qwen-harness/policy';
 import type { CorrelationId, ThreadId } from '@qwen-harness/protocol';
 import type { ApprovalDecision, ApprovalGate } from '@qwen-harness/runtime';
 import { EventStore } from '@qwen-harness/storage';
 import { ToolWorkerClient } from '@qwen-harness/tool-worker';
-import { ManualClock, SequentialIds } from '@qwen-harness/testkit';
+import { ManualClock, MODEL_ACTOR, SequentialIds } from '@qwen-harness/testkit';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -68,6 +76,27 @@ function shellCall(callId: string, marker: string): ProviderStreamEvent {
   const args = {
     command: '/usr/bin/env',
     argv: ['node', '-e', `require('fs').writeFileSync('${marker}', 'ran')`],
+    cwd: '.',
+  };
+  return {
+    type: 'tool-call-complete',
+    itemId: `it_${callId}`,
+    callId,
+    toolName: 'run_shell',
+    argumentsJson: JSON.stringify(args),
+    arguments: args,
+  };
+}
+
+/**
+ * A shell call that APPENDS a line to `marker`, so that two identical calls (same argv, therefore
+ * the same action digest) leave a two-line file when BOTH executed. That is how a session grant is
+ * proven to authorize the second execution without a second prompt.
+ */
+function appendCall(callId: string, marker: string): ProviderStreamEvent {
+  const args = {
+    command: '/usr/bin/env',
+    argv: ['node', '-e', `require('fs').appendFileSync('${marker}', 'x\\n')`],
     cwd: '.',
   };
   return {
@@ -291,5 +320,128 @@ describe('approvals (real policy, real sandbox, real store)', () => {
     expect(result.state).toBe('completed');
     // Same action, same digest — and still asked twice, because a `once` grant is spent on use.
     expect(approver.asked).toHaveLength(2);
+  });
+
+  it('a `session` approval authorizes every identical call for the rest of the session — asked ONCE', async () => {
+    // The exact counterpart to the `once` test above, through the SAME real runtime path (real
+    // GrantStore, real PolicyEngine, real sandbox), changing ONLY the scope. The `once` case asks
+    // TWICE because the grant is spent on use; the session grant is NOT spent, so the second
+    // identical call is authorized with no new prompt — asked ONCE. That difference in the asked
+    // count is caused by nothing but the grant's persistence: it is the behavior a stale/expired or
+    // revoked grant must NOT have (proven in the suite below).
+    const provider = scriptedProvider([
+      [appendCall('call_sess01', 'session.txt'), { type: 'done', finishReason: 'tool_calls' }],
+      [appendCall('call_sess02', 'session.txt'), { type: 'done', finishReason: 'tool_calls' }],
+      text('done'),
+    ]);
+    const approver = gate(() => ({ kind: 'approved', scope: 'session' }));
+
+    const result = await runtimeWith(provider, approver).runTurn({
+      threadId: THREAD,
+      correlationId: CORR,
+      userText: 'run it twice',
+    });
+
+    expect(result.state).toBe('completed');
+    // Asked ONCE: the session grant authorized the second identical call with no new prompt. (The
+    // identical `once` scenario asks twice — so this is the grant persisting, not idempotency: the
+    // side-effect ledger, which dedups the second execution, does not change the approval count.)
+    expect(approver.asked).toHaveLength(1);
+    // The first execution really happened in the real sandbox — there was a genuine call to gate.
+    expect(existsSync(join(workspace, 'session.txt'))).toBe(true);
+    expect(approver.asked[0]).toContain('/usr/bin/env');
+  });
+});
+
+/**
+ * Grant EXPIRY and REVOCATION on the real runtime decision path (PS-03).
+ *
+ * The session-grant tests above prove a LIVE grant is honored across calls. These prove the other,
+ * safety-critical half: a grant that has EXPIRED, or been REVOKED, stops authorizing — the engine
+ * falls back to asking rather than silently trusting a dead grant. This drives the real
+ * `PolicyEngine` through the exact `PolicyContext` the runtime builds per call (`wiring.ts`'s
+ * `policyContext()`), with the real grant lifecycle (`isGrantLive` / `revokeGrant`) and an injected
+ * clock — never a mock of the thing under test, and never a sleep.
+ */
+describe('a session grant honors expiry and revocation on the runtime decision path (PS-03)', () => {
+  const engine = new PolicyEngine();
+  const authority = authorityForProfile('ask');
+  const WS = '/home/dev/project';
+
+  // A real destructive shell action. Under the `ask` profile this is a side effect → `ask`, so a
+  // grant is what turns it into `allow`; that is precisely the transition expiry/revocation must undo.
+  const action: NormalizedAction = {
+    kind: 'shell',
+    command: 'rm -rf build',
+    argv: ['rm', '-rf', 'build'],
+    cwd: WS,
+  };
+  const digest = actionDigest(action);
+
+  // The context the runtime assembles for every evaluation: profile, rules and the managed ceiling
+  // come from the REAL authority; only `grants` and `now` vary per call — exactly as they do live.
+  const contextAt = (grants: readonly Grant[], now: number): PolicyContext => ({
+    profile: authority.profile,
+    managedPolicy: authority.managedPolicy,
+    rules: authority.rules,
+    grants,
+    workspaceRoot: WS,
+    homeDir: '/home/nonexistent',
+    now,
+    actor: MODEL_ACTOR,
+  });
+
+  const sessionGrant = (over: Partial<Grant>): Grant => ({
+    id: 'grt_session',
+    scope: 'session',
+    actionDigest: digest,
+    match: null,
+    grantedAt: NOW,
+    expiresAt: null,
+    revokedAt: null,
+    usedAt: null,
+    grantedBy: 'user',
+    reason: 'interactive session approval',
+    ...over,
+  });
+
+  it('authorizes the exact action while live, then RE-ASKS once the grant expires', () => {
+    const clock = new ManualClock(NOW);
+    const grant = sessionGrant({ expiresAt: NOW + 60_000 });
+
+    // Live: the grant turns the profile's `ask` into `allow`, and the trace names the grant.
+    const live = engine.evaluate(action, contextAt([grant], clock.now()));
+    expect(live.outcome).toBe('allow');
+    expect(live.source.stage).toBe('grant');
+    expect(live.source.id).toBe('grt_session');
+
+    // Advance PAST expiry with the injected clock (never a sleep). Same action, same digest — but the
+    // grant is dead, so policy falls back to asking. A stale grant must not keep authorizing silently.
+    clock.advance(60_000);
+    const expired = engine.evaluate(action, contextAt([grant], clock.now()));
+    expect(expired.outcome).toBe('ask');
+    expect(
+      expired.trace.some((s) => s.stage === 'grant' && /expired/.test(s.note)),
+      'the trace must record the grant as matched-but-expired',
+    ).toBe(true);
+  });
+
+  it('stops authorizing the instant the grant is revoked — the next call RE-ASKS', () => {
+    const grant = sessionGrant({});
+
+    // Live before revocation.
+    const before = engine.evaluate(action, contextAt([grant], NOW));
+    expect(before.outcome).toBe('allow');
+    expect(before.source.stage).toBe('grant');
+
+    // Revoke it with the real immutable revocation, then evaluate a later call. The revoked grant
+    // matches the digest but is no longer usable, so the engine asks again.
+    const revoked = revokeGrant([grant], grant.id, NOW + 1_000);
+    const decision = engine.evaluate(action, contextAt(revoked, NOW + 2_000));
+    expect(decision.outcome).toBe('ask');
+    expect(
+      decision.trace.some((s) => s.stage === 'grant' && /revoked/.test(s.note)),
+      'the trace must record the grant as matched-but-revoked',
+    ).toBe(true);
   });
 });

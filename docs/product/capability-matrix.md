@@ -86,7 +86,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 |---|---|---|---|
 | PS-01 | Profiles are `plan`, `ask`, `auto-accept-edits`, and `yolo`, with documented compatibility aliases where useful. Current profile is visible in every client. | U,I,T,E | IN_PROGRESS |
 | PS-02 | `plan` exposes read/search/analysis only and enforces read-only isolation; unavailable mutations cannot be smuggled through shell, hooks, MCP, agents, or scripts. | U,P,I,S,E | VERIFIED |
-| PS-03 | `ask` prompts for normalized side effects and supports exact once, session, or narrowly matched grants with expiry and revocation. | U,P,I,S,T | REQUIRED |
+| PS-03 | `ask` prompts for normalized side effects and supports exact once, session, or narrowly matched grants with expiry and revocation. | U,P,I,S,T | VERIFIED |
 | PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | VERIFIED |
 | PS-05 | `yolo` removes prompts and default isolation, grants the maximum authority allowed by managed policy, records the choice, and shows a persistent unspoofable danger indicator. Managed deny and credential/redaction invariants remain. | U,I,S,T | VERIFIED |
 | PS-06 | Decisions support allow/deny/ask/passthrough, hard deny dominates every scope, and content safety rules cannot be elevated by repository config or hooks. | U,P,I,S | VERIFIED |
@@ -136,7 +136,7 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | AG-07 | Protocol messages cover normal message, idle, permission request/response, plan approval request/response, shutdown request/approved/rejected, task assignment, team permission update, mode-set, sandbox permission request/response, and termination. | U,I,E | IN_PROGRESS |
 | AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | VERIFIED |
 | AG-09 | Plan approval keeps the teammate read-only until accepted; rejection feedback requires revision and resubmission. | U,I,T,E | REQUIRED |
-| AG-10 | Graceful shutdown supports request, accept/reject with reason, cleanup, task release, process cancellation, and terminal event. | U,I,F,E | IN_PROGRESS |
+| AG-10 | Graceful shutdown supports request, accept/reject with reason, cleanup, task release, process cancellation, and terminal event. | U,I,F,E | VERIFIED |
 | AG-11 | Autonomous teammates cycle WORK -> IDLE -> WORK, prioritize shutdown, check inbox and task events, and atomically claim pending unowned unblocked tasks. | U,P,I,F,E | IN_PROGRESS |
 | AG-12 | Teammate failure, timeout, or lost heartbeat releases/requeues owned work according to policy and reports to lead without duplicate execution. | U,P,I,F,E | IN_PROGRESS |
 | AG-13 | Team definition/inbox/task graph/logical identity are durable, but lost OS processes are never shown running. Resume follows the incarnation, expired-request, task-lease, inbox, and explicit respawn semantics in `docs/product/defaults.md`. | U,P,I,F,E | VERIFIED |
@@ -190,7 +190,7 @@ Source: [s11](https://learn.shareai.run/en/s11/) and [Claude Code error referenc
 | ER-04 | Image/media validation, stream abort, tool abort, hook block, token-budget continuation, overload, and unsupported capabilities have distinct typed paths. | U,I,F | REQUIRED |
 | ER-05 | Retry, continuation, compaction, fallback, and blocking limits are configurable, visible, and produce explicit final reasons. | U,P,I,T | REQUIRED |
 | ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | IN_PROGRESS |
-| ER-07 | Recovery never drops partial evidence, leaks secrets, leaves orphan processes, corrupts terminal mode, or marks an indeterminate side effect complete. | I,F,S,T,E | REQUIRED |
+| ER-07 | Recovery never drops partial evidence, leaks secrets, leaves orphan processes, corrupts terminal mode, or marks an indeterminate side effect complete. | I,F,S,T,E | VERIFIED |
 
 ## J. Background tasks and Cron
 
@@ -198,7 +198,7 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | IN_PROGRESS |
+| BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | VERIFIED |
 | BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | IN_PROGRESS |
 | BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | IN_PROGRESS |
 | BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | VERIFIED |
@@ -235,7 +235,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 | MC-01 | MCP client connects, initializes, discovers, invokes, refreshes, and disconnects servers using standards-conformant JSON-RPC. | U,I,F,E,L | REQUIRED |
 | MC-02 | Support stdio, Streamable HTTP, SSE, WebSocket, and in-process transports. `ide-sse` is this product's documented SSE connection profile/handshake, not an undocumented proprietary protocol. | U,I,F,D | REQUIRED |
 | MC-03 | Names are normalized as `mcp__server__tool`; collisions, invalid characters, untrusted descriptions, schema abuse, and built-in precedence are handled deterministically. | U,P,I,S | VERIFIED |
-| MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | REQUIRED |
+| MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | VERIFIED |
 | MC-05 | Managed-exclusive policy is the ceiling; otherwise MCP precedence is connector < plugin < user < approved project < local, with provenance and explicit project trust. | U,P,I,S,D | REQUIRED |
 | MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | VERIFIED |
 | MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | IN_PROGRESS |

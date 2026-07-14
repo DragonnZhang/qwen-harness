@@ -121,3 +121,92 @@ describe('team recovery (AG-12/AG-13)', () => {
     expect(recovery.heartbeat('mem_w', 'inc2', 2001)).toBe(true);
   });
 });
+
+describe('graceful shutdown while owning an IN-FLIGHT task (AG-10, fault path)', () => {
+  it('releases the owned in-flight task and cancels its work; a second teammate re-claims and completes it', async () => {
+    const graph = makeGraph();
+    graph.create({ subject: 'long job', activeForm: 'x' }, actor('mem_lead'));
+
+    // The shutdown that fires WHILE the task is in flight. This mirrors the CLI teammate loop, where
+    // a `shutdown-request` arriving on the bus during `work()` aborts the shared controller.
+    const controller = new AbortController();
+    let workStarted = false;
+    let workCancelled = false;
+    let cleanupRan = false;
+    let sawSignal: AbortSignal | null = null;
+    let ownedDuringWork: { status: string; owner: string | null } | null = null;
+
+    const w1 = new Teammate({
+      memberId: 'mem_w1',
+      incarnationId: 'inc1',
+      inbox: new Inbox(),
+      tasks: graph,
+      actor: actor('mem_w1'),
+      work: (taskId, signal) => {
+        workStarted = true;
+        sawSignal = signal; // the teammate must hand its OWN abort signal to the work.
+        const t = graph.list().find((x) => x.id === taskId);
+        ownedDuringWork = { status: t?.status ?? '?', owner: t?.owner ?? null };
+
+        // A shutdown lands mid-flight and aborts the teammate's signal.
+        controller.abort();
+
+        // Cooperative cancellation: running work observes the abort, cleans up, and reports NOT-ok
+        // (cancelled) rather than a spurious success.
+        return new Promise<{ ok: boolean }>((resolve) => {
+          const onAbort = (): void => {
+            workCancelled = true;
+            cleanupRan = true;
+            resolve({ ok: false });
+          };
+          if (signal.aborted) onAbort();
+          else signal.addEventListener('abort', onAbort, { once: true });
+        });
+      },
+      signal: controller.signal,
+    });
+
+    const step = await w1.step();
+    expect(step.claimedTask).toBe(1);
+    expect(workStarted).toBe(true);
+    // The task really was owned + in-progress by w1 at the moment work ran (not a pre-claim shortcut).
+    expect(ownedDuringWork).toEqual({ status: 'in-progress', owner: 'mem_w1' });
+    // The teammate handed its own signal down, and the running work was actually cancelled — not
+    // silently dropped.
+    expect(sawSignal).toBe(controller.signal);
+    expect(workCancelled).toBe(true);
+    expect(cleanupRan).toBe(true);
+
+    // The owned task is RELEASED back to the pool: not completed, not left stranded in-progress.
+    const released = graph.list().find((t) => t.id === 1);
+    expect(released?.status).toBe('released');
+    expect(released?.owner).toBeNull();
+
+    // A subsequent step observes the aborted signal and stops gracefully.
+    const stopStep = await w1.step();
+    expect(stopStep.phase).toBe('stopped');
+
+    // The released task is genuinely RE-CLAIMABLE: a fresh teammate picks it up and completes it.
+    let w2Worked = false;
+    const w2 = new Teammate({
+      memberId: 'mem_w2',
+      incarnationId: 'inc2',
+      inbox: new Inbox(),
+      tasks: graph,
+      actor: actor('mem_w2'),
+      work: () => {
+        w2Worked = true;
+        return Promise.resolve({ ok: true });
+      },
+      signal: new AbortController().signal,
+    });
+    const s2 = await w2.step();
+    expect(s2.claimedTask).toBe(1);
+    expect(w2Worked).toBe(true);
+
+    // Completed EXACTLY ONCE, by the second teammate — never double-completed, never dropped.
+    const final = graph.list().find((t) => t.id === 1);
+    expect(final?.status).toBe('completed');
+    expect(final?.owner).toBe('mem_w2');
+  });
+});

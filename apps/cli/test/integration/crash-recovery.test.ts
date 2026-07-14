@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import type { CorrelationId, ThreadId } from '@qwen-harness/protocol';
 import type { ProviderStreamEvent } from '@qwen-harness/provider-core';
 import { EventStore } from '@qwen-harness/storage';
-import { SequentialIds } from '@qwen-harness/testkit';
+import { CANARY_API_KEY, SequentialIds } from '@qwen-harness/testkit';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { listStuck, recoverInterrupted, resolveSideEffect } from '../../src/side-effects.ts';
@@ -57,6 +57,38 @@ async function waitForFile(path: string, timeoutMs = 30_000): Promise<void> {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${path}`);
     await new Promise((r) => setTimeout(r, 50));
   }
+}
+
+/**
+ * A marker unique to this test run: `$pid`, the wall clock, and randomness. Two things depend on it
+ * being unique — no PARALLEL integration file can mistake one of its own sandboxed children for our
+ * orphan, and `pgrep -f <marker>` can only ever match a process WE spawned. (The security suite runs
+ * `fileParallelism: false` for exactly this reason; a unique tag lets us stay honest in the parallel
+ * integration project instead.)
+ */
+function uniqueMarker(tag: string): string {
+  return `qh-${tag}-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+}
+
+/** Count HOST processes whose command line contains `m`. This is the real process table (SB-*). */
+function countHostProcesses(m: string): number {
+  try {
+    return Number.parseInt(execFileSync('pgrep', ['-fc', m], { encoding: 'utf8' }).trim(), 10) || 0;
+  } catch {
+    // pgrep exits non-zero when nothing matches — that is a count of zero, not an error.
+    return 0;
+  }
+}
+
+/** Poll the process table until `m` is gone, or throw after `timeoutMs` (a real leak, not a race). */
+async function waitForNoHostProcess(m: string, timeoutMs = 8_000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let count = countHostProcesses(m);
+  while (count > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+    count = countHostProcesses(m);
+  }
+  return count;
 }
 
 describe('a side effect interrupted by a real crash becomes indeterminate, never replayed', () => {
@@ -270,6 +302,184 @@ describe('a side effect interrupted by a real crash becomes indeterminate, never
       const may = store.mayExecute('shell:danger');
       expect(may.allowed).toBe(false);
       expect(may.reason).toContain('duplicate');
+    } finally {
+      store.close();
+    }
+  });
+
+  it('SIGKILL of an interrupted turn leaves NO orphan process — a real grandchild sleeper is reaped', async () => {
+    // The recovery tests prove the LEDGER is honest after a crash. This one proves the PROCESS TABLE
+    // is clean after the same crash: an interrupted turn that spawned a sandboxed child which itself
+    // spawned a GRANDCHILD sleeper must leave nothing behind. It is asserted against the real host
+    // process table (`pgrep`), not a flag — the sandbox security suite reaps a grandchild sleeper the
+    // same way, and this is that technique carried into the crash/recovery path (SB-*, ER-07).
+    //
+    // The reaping chain under test is not trivial: the tool worker is spawned inside bubblewrap with
+    // `--die-with-parent` and `--unshare-pid`, so when the CLI dies its bwrap child dies, and the
+    // kernel tears down the whole PID namespace — the child AND the grandchild with it. If any link
+    // failed, the tagged `sleep 600` would still be running when we look.
+    const tag = uniqueMarker('orphan');
+    const startedRel = 'orphan-started.marker';
+    const started = join(workspace, startedRel);
+
+    // The sandboxed side effect: background a GRANDCHILD sleeper tagged via `$0` (so the numeric
+    // `sleep` argument stays clean while `pgrep -f <tag>` can still find a survivor), announce it is
+    // in flight, then the parent sleeps too. Both are 600s: far longer than the test, so anything the
+    // test still sees afterwards is a genuine orphan, never a slow natural exit.
+    const shellArgs = {
+      command: '/usr/bin/env',
+      argv: [
+        'sh',
+        '-c',
+        `sh -c 'sleep 600' ${tag}-gc & printf inflight > ${startedRel}; sleep 600`,
+        `${tag}-root`,
+      ],
+      cwd: '.',
+    };
+    const script: ProviderStreamEvent[][] = [
+      [
+        {
+          type: 'tool-call-complete',
+          itemId: 'it_1',
+          callId: 'call_orphan',
+          toolName: 'run_shell',
+          argumentsJson: JSON.stringify(shellArgs),
+          arguments: shellArgs,
+        },
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+    ];
+    const scriptPath = join(workspace, 'script.json');
+    writeFileSync(scriptPath, JSON.stringify(script));
+
+    child = spawn(TSX, [FIXTURE, 'run', '--profile', 'yolo', 'do the thing'], {
+      cwd: workspace,
+      env: { ...process.env, QH_SCRIPT: scriptPath },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+    });
+
+    try {
+      // Wait until the side effect is genuinely in flight, then PROVE the marker technique can see
+      // the sandboxed grandchild while it lives. Without this, an assertion that "nothing survives"
+      // would pass vacuously even if `pgrep` never matched anything at all.
+      await waitForFile(started);
+      expect(
+        countHostProcesses(tag),
+        'the tagged sandboxed process tree must be visible on the host while alive',
+      ).toBeGreaterThan(0);
+
+      // The crash: SIGKILL the whole CLI process group. No cleanup, no final event.
+      expect(child.pid).toBeDefined();
+      process.kill(-child.pid!, 'SIGKILL');
+      await new Promise<void>((r) => child!.on('exit', () => r()));
+
+      // Recovery runs, exactly as a surviving supervisor would run it.
+      const store = openStore(workspace);
+      try {
+        recoverInterrupted(store);
+      } finally {
+        store.close();
+      }
+
+      // The load-bearing assertion: no orphan survives the crash. If the teardown chain leaked, the
+      // tagged `sleep 600` would still be on the host and this stays > 0 until the deadline.
+      const survivors = await waitForNoHostProcess(tag);
+      expect(survivors, 'a crashed turn must leave NO orphan process on the host').toBe(0);
+    } finally {
+      // Belt and braces: never leave a real sleeper on the host, even if an assertion above threw
+      // because of a genuine leak.
+      try {
+        execFileSync('pkill', ['-9', '-f', tag]);
+      } catch {
+        /* nothing matched — good */
+      }
+    }
+  });
+
+  it('a secret in an interrupted side effect is redacted from the durable log and the recovery artifact', async () => {
+    // The generic redaction suite proves secrets never land in the store on the HAPPY path. This one
+    // proves the same on the CRASH/recovery path (ER-07, S): a credential that appears in a side
+    // effect which is then interrupted mid-flight must be scrubbed from the durable log AND from
+    // anything recovery surfaces about the stuck action. The credential VALUE seeds the store's
+    // redactor exactly as the real CLI seeds it (`DASHSCOPE_API_KEY`, read once at the provider
+    // boundary), so this is the production redaction path, not a test double.
+    const startedRel = 'canary-started.marker';
+    const started = join(workspace, startedRel);
+
+    // The model runs a shell command whose ARGV carries the canary. The tool-call item (argv and all)
+    // is persisted BEFORE the command executes, so the secret genuinely reaches durable storage and
+    // the redactor is the only thing that can keep it out of the SQLite file.
+    const shellArgs = {
+      command: '/usr/bin/env',
+      argv: ['sh', '-c', `printf inflight > ${startedRel}; sleep 600`, CANARY_API_KEY],
+      cwd: '.',
+    };
+    const script: ProviderStreamEvent[][] = [
+      [
+        {
+          type: 'tool-call-complete',
+          itemId: 'it_1',
+          callId: 'call_canary',
+          toolName: 'run_shell',
+          argumentsJson: JSON.stringify(shellArgs),
+          arguments: shellArgs,
+        },
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+    ];
+    const scriptPath = join(workspace, 'script.json');
+    writeFileSync(scriptPath, JSON.stringify(script));
+
+    child = spawn(TSX, [FIXTURE, 'run', '--profile', 'yolo', 'do the thing'], {
+      cwd: workspace,
+      // The canary is the live credential for this run. The provider never actually calls out (the
+      // model is scripted), but the redactor is seeded from exactly this value.
+      env: { ...process.env, QH_SCRIPT: scriptPath, DASHSCOPE_API_KEY: CANARY_API_KEY },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+    });
+
+    // In flight, then crash.
+    await waitForFile(started);
+    expect(child.pid).toBeDefined();
+    process.kill(-child.pid!, 'SIGKILL');
+    await new Promise<void>((r) => child!.on('exit', () => r()));
+
+    // A fresh process (NO secret seeded here — we inspect the raw bytes) recovers and reads the log.
+    const store = openStore(workspace);
+    try {
+      const threads = store.listThreads();
+      expect(threads).toHaveLength(1);
+      const threadId = threads[0]!.id;
+
+      recoverInterrupted(store);
+
+      const events = store.readThread(threadId);
+      const logDump = JSON.stringify(events);
+      const stuck = listStuck(store, threadId);
+      const recoveryDump = JSON.stringify(stuck);
+
+      // Non-vacuous: the command really did reach the durable log (so there was a secret TO leak) and
+      // recovery really did surface the stuck side effect (so there is a recovery artifact TO check).
+      expect(logDump, 'the interrupted tool call must be in the durable log').toContain(
+        'run_shell',
+      );
+      expect(stuck, 'recovery must surface the interrupted side effect').toHaveLength(1);
+
+      // The property: the credential is nowhere in the durable log, nor in the recovery artifact.
+      expect(logDump, 'the durable log must not contain the credential').not.toContain(
+        CANARY_API_KEY,
+      );
+      expect(recoveryDump, 'the recovery artifact must not contain the credential').not.toContain(
+        CANARY_API_KEY,
+      );
+
+      // And it was REDACTED, not merely never written — the placeholder proves the argv was persisted
+      // and scrubbed in place, so the assertions above cannot pass for the wrong reason.
+      expect(logDump, 'the credential must have been redacted where it was written').toContain(
+        '[REDACTED]',
+      );
     } finally {
       store.close();
     }
