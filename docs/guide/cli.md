@@ -156,10 +156,13 @@ qwen-harness task todo '[{"content":"read code","activeForm":"Reading code"}]'
 
 ### `skills` — two-level skill loading
 
-Lists the skills discovered from `SKILL.md` frontmatter under `.qwen-harness/skills/` (and the user,
-managed, plugin, and bundled sources, in that precedence). The catalog reads frontmatter ONLY; a
-skill's body is loaded only when it is invoked (IN-01). An invalid frontmatter is reported, never
-silently dropped (IN-04).
+Lists the skills discovered from `SKILL.md` frontmatter. Sources are searched in this precedence
+(highest first, IN-03): **managed** (`/etc/qwen-harness/skills`) → **project** (`.qwen-harness/skills`)
+→ **additional directories** → **user** (`~/.config/qwen-harness/skills`) → **plugin** → **MCP** →
+**bundled**. When two sources declare the same name the higher one wins and the lower is shadowed
+(never silently both); a **managed** name is RESERVED — nothing can shadow it. The catalog reads
+frontmatter ONLY; a skill's body is loaded only when it is invoked (IN-01). An invalid frontmatter is
+reported, never silently dropped (IN-04).
 
 ```sh
 qwen-harness skills --json                        # {skills:[{name,source}], errors:[...]}

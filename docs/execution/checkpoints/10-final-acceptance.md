@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **86** |
+| **VERIFIED** | 38 | **87** |
 | IN_PROGRESS | 83 | 51 |
-| REQUIRED | 57 | 41 |
+| REQUIRED | 57 | 40 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -209,7 +209,16 @@ turn-local `task todo` checklist documented as explicitly separate). U/I were al
 also documented the previously-undocumented `task`/`skills`/`memory`/`trace`/`mcp`/`background`/`cron`
 commands in cli.md (definition-of-done item 10 progress; satisfies the D class for those surfaces).
 
-The remaining 92 rows are still genuinely not verifiable today — a required evidence class is absent
+**IN-03 (skill source precedence) is now VERIFIED** — gaps were I and D. Added
+`packages/skills/test/integration/precedence.test.ts` (I — same-named skills written to real on-disk
+source directories are discovered and run through the real registry: a project skill shadows a
+same-named user one, a MANAGED name is reserved and cannot be shadowed by a project skill, and distinct
+names all register) and the D via the corrected precedence documentation in `docs/guide/cli.md`
+(managed > project > additional > user > plugin > MCP > bundled, managed reserved). U/P were already
+real (`sources.test.ts` — the precedence table as data, ordering, managed ceiling, and
+`resolvePrecedence` deterministic regardless of discovery order).
+
+The remaining 91 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
