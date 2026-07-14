@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **69** |
-| IN_PROGRESS | 83 | 66 |
+| **VERIFIED** | 38 | **71** |
+| IN_PROGRESS | 83 | 64 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -47,7 +47,22 @@ answer) looped until budget-exhausted. Every prior test passed only because none
 a result. This is the seventh and most severe "correct-looking but broken" defect this project
 surfaced by running the real thing rather than trusting green unit suites.
 
-The remaining 109 rows are still genuinely not verifiable today — a required evidence class is absent
+**TL-03 and TL-04 (file tools; edits/diffs) are now VERIFIED** — their only remaining gap was a unit
+(`U`) class, and TL-04 a `P` class, over already-WIRED code in `packages/tool-worker/src/handlers.ts`
+(the real sandboxed file-tool path). Added `packages/tool-worker/test/unit/handlers.test.ts` (pure
+`isBinary`/`detectLineEnding`/`digest`/`unifiedDiff`) and `unified-diff.property.test.ts` (a 2000-run
+round-trip: applying the emitted diff to `before` reconstructs `after` for arbitrary edits). Their
+other classes were already real: I (`sandboxed-tools.test.ts` pagination + edit), F (stale-edit
+refused with `stale-file`), S (`path-escape`), P-escape (`resolve-scoped.property.test.ts`), E
+(`evals/e2e/coding-loop.test.ts` lands a real `edit_file` on disk).
+
+Separately, an 8th "loaded but not wired" case was FOUND (recorded, not yet fixed): the tool-call
+SCHEDULER (`packages/tools-core/src/scheduler.ts` `planBatches`/`conflicts`) is fully unit-tested but
+NEVER called — the turn engine executes tool calls serially in a `for` loop (`turn-engine.ts:591`).
+So TL-08's parallel/serial batching is not delivered; it needs real wiring plus `I`/`F`, not a
+property test on dead code, and remains IN_PROGRESS honestly.
+
+The remaining 107 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)

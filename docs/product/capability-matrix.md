@@ -65,8 +65,8 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 |---|---|---|---|
 | TL-01 | A registry binds stable name, description, input/output schema, annotations, permissions, concurrency metadata, timeout, cancellation, and handler. | U,I | VERIFIED |
 | TL-02 | Built-ins cover directory listing/glob, text search, paged file read, write, edit, structured apply-patch, shell, Git status/diff, user interaction, and output retrieval. | U,I,S,E | IN_PROGRESS |
-| TL-03 | File tools detect binary/encoding/size conditions, paginate large content, preserve line endings, and reject traversal, absolute-path escape, and symlink escape after canonicalization. | U,P,I,S | IN_PROGRESS |
-| TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | IN_PROGRESS |
+| TL-03 | File tools detect binary/encoding/size conditions, paginate large content, preserve line endings, and reject traversal, absolute-path escape, and symlink escape after canonicalization. | U,P,I,S | VERIFIED |
+| TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | VERIFIED |
 | TL-05 | Shell supports cwd, environment allowlisting, stdout/stderr separation, partial streaming, timeout, cancellation, non-zero status, process-group cleanup, and optional PTY. | U,I,F,S,T | IN_PROGRESS |
 | TL-06 | Git tooling is read-safe by default, reports dirty state precisely, and never discards, resets, force-pushes, or rewrites history without exact approval. | U,I,S,E | REQUIRED |
 | TL-07 | Tool arguments pass schema validation -> semantic validation -> hard policy -> pre hooks -> permission -> sandbox -> execution. No alternate path bypasses this pipeline. | U,P,I,S | IN_PROGRESS |
