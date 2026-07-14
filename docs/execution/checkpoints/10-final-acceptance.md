@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **80** |
+| **VERIFIED** | 38 | **82** |
 | IN_PROGRESS | 83 | 55 |
-| REQUIRED | 57 | 43 |
+| REQUIRED | 57 | 41 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -150,7 +150,16 @@ machinery — tracker/inbox) and E (`evals/e2e/team.test.ts` golden path 5: 3 re
 round-trip plan-approval, permission, task-assignment, and shutdown messages, asserted at lines
 171-181) were already real.
 
-The remaining 98 rows are still genuinely not verifiable today — a required evidence class is absent
+**IN-01 and IN-04 (skills two-level loading + strict frontmatter validation) are now VERIFIED** — the
+skills engine was fully implemented and wired (`apps/cli/src/skills.ts`, the `skills` command,
+`run --skill`) but had NO CLI-level I/E tests. Two shared tests flip both: `apps/cli/test/integration/
+skills.test.ts` (I — `main(['skills','--json'])` catalogs a valid skill by frontmatter and REPORTS an
+invalid one instead of silently dropping it) and `evals/e2e/skills.test.ts` (E — the catalog is built
+from frontmatter alone, then `run --skill` loads the skill BODY and feeds it to the model, proving the
+two levels; an invalid skill is reported). U/S were already real (`catalog.test.ts`/`registry.test.ts`/
+`frontmatter.test.ts`, `untrusted-skill.test.ts`).
+
+The remaining 96 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)

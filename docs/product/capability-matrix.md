@@ -148,10 +148,10 @@ Sources: [s07](https://learn.shareai.run/en/s07/), [s10](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| IN-01 | Skills use two-level loading: discover validated metadata/catalog first and load full `SKILL.md` only when invoked or selected. | U,I,E | REQUIRED |
+| IN-01 | Skills use two-level loading: discover validated metadata/catalog first and load full `SKILL.md` only when invoked or selected. | U,I,E | VERIFIED |
 | IN-02 | Skill resolution uses a registry and canonical scope, never arbitrary model-provided paths; referenced scripts/assets/references remain inside the validated skill root. | U,P,I,S | VERIFIED |
 | IN-03 | Sources and precedence cover managed, user, project, additional directory, legacy commands, bundled, plugin, MCP, dynamic, and conditional skills. | U,P,I,D | REQUIRED |
-| IN-04 | Frontmatter supports name, description, usage condition, allowed tools, context mode, model hint, hooks, paths, user invocation, and argument substitution with strict validation. | U,I,S,E | REQUIRED |
+| IN-04 | Frontmatter supports name, description, usage condition, allowed tools, context mode, model hint, hooks, paths, user invocation, and argument substitution with strict validation. | U,I,S,E | VERIFIED |
 | IN-05 | Inline and forked skills have explicit context, tool, budget, permission, and result semantics; catalog and loaded-content token budgets are enforced. | U,P,I,E | REQUIRED |
 | IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | VERIFIED |
 | IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | VERIFIED |
