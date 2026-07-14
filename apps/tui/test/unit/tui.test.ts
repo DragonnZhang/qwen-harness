@@ -254,3 +254,75 @@ describe('slash-command menu navigation (UI-04)', () => {
     expect(lastFrame()).not.toContain('model:');
   });
 });
+
+/**
+ * `@`-file completion in the editor (UI-04). The lister is INJECTED, so this is deterministic and
+ * filesystem-free: typing `@` opens a menu of the injected matches, ↑/↓ moves the highlight, and Tab
+ * SPLICES the highlighted path into the buffer (it never submits, never opens the file). Hostile
+ * filenames render inert.
+ */
+describe('@-file completion (UI-04)', () => {
+  const TAB = String.fromCharCode(9);
+  const DOWN = `${String.fromCharCode(27)}[B`;
+  const files = [
+    { display: 'src/', insert: 'src/', isDir: true },
+    { display: 'app.ts', insert: 'app.ts', isDir: false },
+    { display: 'README.md', insert: 'README.md', isDir: false },
+  ];
+
+  function mountEditor(listFiles) {
+    const onSubmit = vi.fn();
+    const instance = mount(
+      h(Editor, {
+        onSubmit,
+        onInterrupt: vi.fn(),
+        onExit: vi.fn(),
+        busy: false,
+        listFiles,
+      }),
+    );
+    return { ...instance, onSubmit };
+  }
+
+  it('typing @ opens the menu; Tab completes the highlighted path into the buffer', async () => {
+    const { stdin, lastFrame, onSubmit } = mountEditor(() => files);
+    stdin.write('@');
+    await tick();
+    expect(lastFrame()).toContain('src/');
+    expect(lastFrame()).toContain('app.ts');
+
+    stdin.write(TAB); // completes the first match (src/)
+    await tick();
+    expect(lastFrame()).toContain('@src/');
+    // Completion is not submission.
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Down then Tab completes the SECOND match', async () => {
+    const { stdin, lastFrame } = mountEditor(() => files);
+    stdin.write('@');
+    await tick();
+    stdin.write(DOWN);
+    await tick();
+    stdin.write(TAB);
+    await tick();
+    expect(lastFrame()).toContain('@app.ts');
+  });
+
+  it('Enter submits the message with the typed mention (does not complete)', async () => {
+    // A lister that matches only when the query is exactly "app.ts" keeps the menu open at Enter.
+    const { stdin, onSubmit } = mountEditor((q) =>
+      q === 'app.ts' ? [{ display: 'app.ts', insert: 'app.ts', isDir: false }] : [],
+    );
+    for (const ch of 'see @app.ts') stdin.write(ch);
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(onSubmit).toHaveBeenCalledWith('see @app.ts');
+  });
+
+  // The inert-display security property lives in the lister, not the editor: `listFileMatches`
+  // returns each name as sanitized `SafeText`, proven in `file-complete.test.ts`
+  // ("a hostile filename is returned as inert SafeText"). The editor is typed to accept only
+  // `SafeText` for `display`, so the trust boundary is enforced by the compiler, not this test.
+});

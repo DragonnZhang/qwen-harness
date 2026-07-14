@@ -29,6 +29,12 @@ import {
   type CommandContext,
   type SlashCommand,
 } from './commands.ts';
+import {
+  atCompletionQuery,
+  completionEdit,
+  listFileMatches,
+  type FileMatch,
+} from './file-complete.ts';
 import type { Activity } from './types.ts';
 import {
   backspace,
@@ -85,6 +91,7 @@ export function Editor({
   mode = 'ask',
   model,
   cwd,
+  listFiles,
 }: {
   onSubmit: (text: string) => void;
   onInterrupt: () => void;
@@ -98,7 +105,14 @@ export function Editor({
   mode?: PermissionProfile;
   model?: SafeText | undefined;
   cwd?: SafeText | undefined;
+  /**
+   * The `@`-completion lister (UI-04). Injected so the confinement/sort logic is unit-tested without
+   * a real filesystem; the default lists the real workspace (`process.cwd()`), confined to it.
+   */
+  listFiles?: ((query: string) => readonly FileMatch[]) | undefined;
 }): ReactElement {
+  const listFilesFor =
+    listFiles ?? ((query: string) => listFileMatches(process.cwd(), query, { limit: 8 }));
   const [state, setState] = useState<EditorState>(() => withHistory(createEditor(config), history));
   // Ctrl-C on idle "arms" exit: the first press clears, the second (armed) press exits (UI-07).
   const [armed, setArmed] = useState(false);
@@ -121,6 +135,15 @@ export function Editor({
   const menuOpen = isCommandLine(currentText);
   const matches = menuOpen ? matchCommands(commandQuery(currentText)) : [];
   const selected = matches.length > 0 ? Math.min(menuIndex, matches.length - 1) : -1;
+
+  // The `@`-file-completion menu is open when the buffer is NOT a slash line but its trailing token
+  // starts with `@` and at least one workspace path matches. Slash takes precedence so a line like
+  // `/help` never also opens file completion. Both menus share the `menuIndex` highlight (only one is
+  // ever open at a time). Selecting a file SPLICES a path into the buffer; it never executes.
+  const atQuery = menuOpen ? null : atCompletionQuery(currentText);
+  const fileMatches = atQuery !== null ? listFilesFor(atQuery) : [];
+  const atOpen = fileMatches.length > 0;
+  const fileSelected = atOpen ? Math.min(menuIndex, fileMatches.length - 1) : -1;
 
   const activity: Activity = busy ? 'busy' : 'idle';
   const runCommand = (command: SlashCommand): void => {
@@ -192,6 +215,34 @@ export function Editor({
             setMenu(0);
             return;
           }
+        }
+      }
+
+      // `@`-FILE-COMPLETION MENU (UI-04). Up/Down move the highlight; Tab COMPLETES the highlighted
+      // path by splicing it into the buffer (it does not submit); Enter falls through to submit the
+      // message. Completion is pure text insertion — it never opens a file or runs anything, and the
+      // displayed names are already `SafeText`, so a hostile filename cannot style the terminal.
+      if (atOpen) {
+        if (key.upArrow) {
+          setMenu((menuIndexRef.current - 1 + fileMatches.length) % fileMatches.length);
+          return;
+        }
+        if (key.downArrow) {
+          setMenu((menuIndexRef.current + 1) % fileMatches.length);
+          return;
+        }
+        if (key.tab && !key.shift) {
+          const match = fileMatches[Math.min(menuIndexRef.current, fileMatches.length - 1)];
+          if (match !== undefined) {
+            const { deleteCount, insert } = completionEdit(currentText, match);
+            setState((prev) => {
+              let next = prev;
+              for (let i = 0; i < deleteCount; i += 1) next = backspace(next);
+              return insertText(next, insert);
+            });
+            setMenu(0);
+          }
+          return;
         }
       }
 
@@ -288,6 +339,19 @@ export function Editor({
       )}
       {menuOpen && matches.length === 0 && (
         <Text dimColor>no matching command — press Enter to send as text</Text>
+      )}
+      {atOpen && (
+        <Box flexDirection="column">
+          {fileMatches.map((match, i) => (
+            <Box key={match.insert}>
+              <Text color={i === fileSelected ? 'cyan' : 'gray'} inverse={i === fileSelected}>
+                {match.display}
+              </Text>
+              {match.isDir && <Text dimColor>{'  dir'}</Text>}
+            </Box>
+          ))}
+          <Text dimColor>Tab completes · ↑↓ select</Text>
+        </Box>
       )}
       {notice !== null && (
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>

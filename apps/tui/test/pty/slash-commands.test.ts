@@ -40,6 +40,18 @@ const bundle = join(appDir, 'dist', 'tui.bundle.mjs');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Strip CSI escape sequences so the editor's echoed buffer line can be matched as plain text.
+const ANSI = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
+const stripAnsi = (s) => s.replace(ANSI, '');
+
+/**
+ * True once the editor's INPUT LINE echoes exactly `text`. The prompt `❯ ` prefixes only the editor
+ * line, so `❯ <text>` is unique to the buffer — unlike a menu ROW, which also appears in the
+ * unfiltered `/` menu. Gating an executing Enter on this echo guarantees the buffer is complete
+ * BEFORE Enter fires, independent of how fast the terminal rendered the intervening keystrokes.
+ */
+const bufferShows = (o, text) => stripAnsi(o).includes(`❯ ${text}`);
+
 function spawnBundle(args, env) {
   const state = { output: '' };
   // A wide terminal keeps the one-line status and the menu rows from wrapping, so each command name
@@ -102,6 +114,8 @@ describe('UI-04 — the slash-command menu through the compiled TUI over a PTY',
     expect(filtered).not.toContain('/quit');
 
     // 3. EXECUTES (output) — Enter runs /help: the menu closes and the real help panel prints.
+    // Gate on the buffer echo so Enter fires only once the buffer is exactly `/help`.
+    await app.waitFor((o) => bufferShows(o, '/help'), 10_000, 'buffer echoes /help');
     const beforeHelp = app.output.length;
     app.term.write(ENTER);
     await app.waitFor(
@@ -116,6 +130,9 @@ describe('UI-04 — the slash-command menu through the compiled TUI over a PTY',
     // `mode` sorts before `model`, so it is the highlighted (index 0) match for `/mode`: Enter runs it.
     app.term.write('/mode');
     await app.waitFor((o) => o.includes('/model'), 10_000, '/mode menu shows both mode and model');
+    // Gate the executing Enter on the buffer echo — the `/model` ROW alone appears in the unfiltered
+    // menu too, so it does not prove the buffer reached `/mode`.
+    await app.waitFor((o) => bufferShows(o, '/mode'), 10_000, 'buffer echoes /mode');
     const beforeCycle = app.output.length;
     app.term.write(ENTER);
     await app.waitFor(
@@ -124,29 +141,26 @@ describe('UI-04 — the slash-command menu through the compiled TUI over a PTY',
       '/mode executed — status line cycled ask → auto-accept-edits',
     );
 
-    // 4b. A SECOND, DISTINCT command executes through the menu. Completing to `/model` filters
-    // the menu to exactly one row (`model` is a prefix of `/model` but NOT of `/mode`), so Enter
-    // runs `/model` — a different command from `/mode` — printing the model panel. This proves the
-    // menu dispatches the highlighted registry object, not one hardcoded command. Arrow-key
-    // navigation of the highlight is proven deterministically at the component level in
-    // `test/unit/tui.test.ts` ("slash-command menu navigation (UI-04)"), where synchronous
-    // ink-testing-library rendering removes the PTY keystroke-timing race that made this step flaky.
-    const beforeModel = app.output.length;
-    app.term.write('/model');
-    await app.waitFor(
-      (o) => o.slice(beforeModel).includes('/model'),
-      10_000,
-      '/model menu shown (filtered to one command)',
-    );
-    await delay(300); // let the filtered frame settle
-    // `/mode` shares no `model`-prefix, so it is gone: the menu is now the single `/model` row.
-    expect(app.output.slice(beforeModel)).not.toMatch(/\/mode\b(?!l)/);
-    const beforeModelRun = app.output.length;
+    // 4b. A SECOND, DISTINCT command executes through the menu — proving it dispatches the highlighted
+    // registry object, not one hardcoded command. We use `/status` because `status` is a UNIQUE
+    // prefix: no other command name begins with `s`, so EVERY prefix of `/status` (`/s`, `/sta`, …)
+    // filters the menu to exactly the `/status` row and Enter runs it — the result does not depend on
+    // how many keystrokes the terminal has rendered when Enter fires. (Targeting `/model`, whose
+    // prefix `mode` is shared with `/mode`, made this racy: the `/model` ROW renders while the buffer
+    // is still `/mode`, so Enter could run the wrong command. Highlight NAVIGATION between shared-prefix
+    // rows is instead proven deterministically at the component level in `test/unit/tui.test.ts`.)
+    app.term.write('/status');
+    // Wait for the buffer to actually echo `/status` (the `/status` menu ROW shows in the full `/`
+    // menu too, so it cannot gate Enter). Once the input line reads `/status`, Enter runs it.
+    await app.waitFor((o) => bufferShows(o, '/status'), 10_000, 'buffer echoes /status');
+    const beforeStatusRun = app.output.length;
     app.term.write(ENTER);
+    // `/status` prints a `workspace:` line that no other command prints (`/help` prints
+    // `Slash commands:`, `/mode` cycles the status line) — so this uniquely proves `/status` executed.
     await app.waitFor(
-      (o) => o.slice(beforeModelRun).includes('model:'),
+      (o) => o.slice(beforeStatusRun).includes('workspace:'),
       10_000,
-      'Enter ran the SECOND menu command (/model) — model panel printed',
+      'Enter ran the SECOND menu command (/status) — status panel printed',
     );
 
     // 5. SECURITY — injected text after `/` is not a command: the menu says there is nothing to run,
@@ -166,15 +180,10 @@ describe('UI-04 — the slash-command menu through the compiled TUI over a PTY',
     app.term.write(ESC);
     await delay(200);
 
-    // 6. /quit EXECUTES the exit path; the terminal is restored cleanly.
-    const beforeQuit = app.output.length;
+    // 6. /quit EXECUTES the exit path; the terminal is restored cleanly. Gate the Enter on the buffer
+    // echo — `Exit the session` is the `/quit` DESCRIPTION, which also shows in the full `/` menu.
     app.term.write('/quit');
-    await app.waitFor(
-      (o) => o.slice(beforeQuit).includes('Exit the session'),
-      10_000,
-      '/quit menu shown',
-    );
-    await delay(200);
+    await app.waitFor((o) => bufferShows(o, '/quit'), 10_000, 'buffer echoes /quit');
     app.term.write(ENTER);
 
     const result = await Promise.race([
