@@ -285,6 +285,12 @@ export interface LiveController {
   /** Submit user text — starts the next scripted turn as a genuine engine run. */
   submit(text: string): void;
   /**
+   * Run a `!<command>` DIRECT USER SHELL ACTION (UI-04): the real sandboxed pipeline with the user as
+   * actor, NO model turn. Optional — only the live controller drives a real runtime; the scripted
+   * demo omits it. The result is a durable, redacted `user-shell` item mirrored into the transcript.
+   */
+  runShell?(command: string): void;
+  /**
    * Cycle the approval mode one step (plan→ask→auto-accept-edits→yolo→plan), effective on the NEXT
    * turn. The live controller re-derives authority through `loadRunAuthority` and rebuilds the real
    * runtime, so the ceiling clamps the result and the status line shows the CLAMPED profile.

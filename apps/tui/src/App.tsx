@@ -37,6 +37,8 @@ export interface AppProps {
   readonly onInterrupt?: () => void;
   readonly onApprovalDecision?: (decision: ApprovalDecision) => void;
   readonly onCycleMode?: () => void;
+  /** Run a `!<command>` direct user shell action (UI-04). Absent when no live runtime backs the app. */
+  readonly onShell?: (command: string) => void;
   readonly editorConfig?: Partial<EditorConfig>;
   readonly history?: readonly string[];
 }
@@ -49,6 +51,7 @@ export function App({
   onInterrupt,
   onApprovalDecision,
   onCycleMode,
+  onShell,
   editorConfig,
   history,
 }: AppProps): ReactElement {
@@ -83,6 +86,7 @@ export function App({
           onInterrupt={() => onInterrupt?.()}
           onExit={exit}
           onCycleMode={onCycleMode}
+          onShell={onShell}
           busy={status.activity === 'busy'}
           config={editorConfig}
           history={history}

@@ -387,6 +387,47 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
       };
     },
     submit,
+    runShell(command: string) {
+      // A `!` action is a DIRECT USER command, not a model turn. It runs through the runtime's
+      // `runUserShell`, which drives the real sandboxed pipeline with the USER as actor (the managed
+      // ceiling can still refuse it) and appends a durable, redacted `user-shell` audit item. That
+      // item flows to the transcript through the SAME `onEvent` bridge the model's items use, so no
+      // extra display wiring is needed here. No `assistant-message`, no `runTurn` — never the model.
+      if (running || command.trim() === '') return;
+      running = true;
+      setView({ status: baseStatus('busy'), approval: null });
+      const controller = new AbortController();
+      abort = controller;
+      void runtime
+        .runUserShell({
+          threadId,
+          correlationId: ids.next('cor') as CorrelationId,
+          command,
+          signal: controller.signal,
+        })
+        .catch((err: unknown) => {
+          source.push(
+            ItemSchema.parse({
+              id: ids.next('itm'),
+              turnId: turnIdSeed,
+              threadId,
+              seq: 0,
+              createdAt: Date.now(),
+              type: 'error',
+              message: sanitize(err instanceof Error ? err.message : String(err), {
+                origin: 'tool',
+                multiline: true,
+                maxLength: 400,
+              }).text,
+            }),
+          );
+        })
+        .finally(() => {
+          running = false;
+          abort = null;
+          setView({ status: baseStatus('idle'), approval: null });
+        });
+    },
     cycleMode() {
       // Advance the REQUEST and re-derive real authority; the ceiling clamps it (yolo under
       // maxProfile:plan comes back as plan). Rebuild the runtime so the change takes effect on the

@@ -33,6 +33,7 @@ export function LiveApp({ controller }: { controller: LiveController }): ReactEl
       onInterrupt={() => controller.interrupt()}
       onApprovalDecision={(decision) => controller.decide(decision)}
       onCycleMode={() => controller.cycleMode()}
+      {...(controller.runShell ? { onShell: (command) => controller.runShell?.(command) } : {})}
     />
   );
 }

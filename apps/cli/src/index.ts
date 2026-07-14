@@ -16,7 +16,12 @@ export {
   riskOf,
   GrantStore,
 } from './wiring.ts';
-export type { HarnessRuntime, HarnessRuntimeOptions, TurnOutcome } from './wiring.ts';
+export type {
+  HarnessRuntime,
+  HarnessRuntimeOptions,
+  TurnOutcome,
+  UserShellOutcome,
+} from './wiring.ts';
 export { runDoctor } from './doctor.ts';
 export type { DoctorReport } from './doctor.ts';
 export { main } from './main.ts';

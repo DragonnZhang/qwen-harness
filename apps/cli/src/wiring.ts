@@ -5,11 +5,13 @@ import {
   type NormalizedAction,
   type PolicyContext,
 } from '@qwen-harness/policy';
+import { ItemSchema } from '@qwen-harness/protocol';
 import type {
   Actor,
   ActorId,
   CorrelationId,
   HarnessEvent,
+  Item,
   ThreadId,
   TurnId,
 } from '@qwen-harness/protocol';
@@ -61,6 +63,8 @@ import {
  */
 
 const MODEL_ACTOR: Actor = { kind: 'model', id: 'act_model1' as ActorId };
+/** The human at the keyboard. A `!` direct shell action is attributed to THIS actor, not the model. */
+const USER_ACTOR: Actor = { kind: 'user', id: 'act_user01' as ActorId };
 
 /**
  * The live provider, built from RESOLVED config. Extracted so a test can prove `baseUrl`/`transport`
@@ -444,11 +448,34 @@ export interface TurnOutcome {
   readonly pendingApproval: ApprovalRequest | null;
 }
 
+/**
+ * The result of a `!` direct user shell action (UI-04). It never starts a model turn; it runs (or is
+ * refused by the ceiling) as the user, records a durable `user-shell` audit item either way, and
+ * returns a small status the UI can echo. `denied` is the managed-ceiling / policy refusal; the
+ * command did NOT run.
+ */
+export type UserShellOutcome =
+  | { readonly status: 'executed'; readonly exitCode: number | null; readonly truncated: boolean }
+  | { readonly status: 'denied'; readonly reason: string }
+  | { readonly status: 'rejected'; readonly message: string };
+
 export interface HarnessRuntime {
   readonly store: EventStore;
   readonly engine: TurnEngine;
   readonly grants: GrantStore;
   readonly tools: readonly BuiltinTool[];
+  /**
+   * Run a `!<command>` as a DIRECT USER ACTION (UI-04): no model prompt and no model turn. Policy
+   * still runs with the user as actor — the managed ceiling, protected paths, and deny rules can
+   * still refuse it (`denied`) — and it executes under the SAME configured sandbox isolation as a
+   * model tool call. Every outcome appends a durable, redacted `user-shell` item (the audit record).
+   */
+  runUserShell(input: {
+    threadId: ThreadId;
+    correlationId: CorrelationId;
+    command: string;
+    signal?: AbortSignal;
+  }): Promise<UserShellOutcome>;
   runTurn(input: {
     threadId: ThreadId;
     correlationId: CorrelationId;
@@ -598,11 +625,123 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
     ...(opts.extraTools ?? []),
   ];
 
+  // A per-turn ordinal for the ad-hoc `user-shell` items a `!` action mints. The event store assigns
+  // the authoritative per-thread `seq`; this is only the item's within-turn ordinal.
+  let userShellSeq = 0;
+
   return {
     store: opts.store,
     engine,
     grants,
     tools: builtins,
+    runUserShell: async (input) => {
+      const rawArguments = { command: 'bash', argv: ['-lc', input.command], cwd: '.' };
+      // The user is the actor — this is what drives the policy engine's user-passthrough stage. Grants
+      // are read from the SAME live store, so a `!` action honours a grant a prior approval minted.
+      const userContext: PolicyContext = {
+        profile,
+        managedPolicy,
+        rules,
+        grants: grants.grants,
+        workspaceRoot: opts.workspaceRoot,
+        homeDir: opts.homeDir,
+        now: opts.clock.now(),
+        actor: USER_ACTOR,
+      };
+
+      // Append a durable `user-shell` audit item and mirror it to the UI. The store redacts secrets
+      // from the payload before persisting AND in the event it returns, so the item the UI shows is
+      // already redacted — one redaction covers both the audit record and the display.
+      const record = (fields: {
+        exitCode: number | null;
+        output: string;
+        truncated: boolean;
+      }): void => {
+        userShellSeq += 1;
+        const item: Item = ItemSchema.parse({
+          id: opts.ids.next('itm'),
+          turnId: opts.ids.next('trn'),
+          threadId: input.threadId,
+          seq: userShellSeq,
+          createdAt: opts.clock.now(),
+          type: 'user-shell',
+          command: input.command,
+          ...fields,
+        });
+        const event = opts.store.append({
+          threadId: input.threadId,
+          correlationId: input.correlationId,
+          permissionProfile: profile,
+          actor: USER_ACTOR,
+          payload: { type: 'item-appended', item },
+        });
+        opts.onEvent?.(event);
+      };
+
+      const callId = opts.ids.next('call');
+      // DECIDE first (schema → semantic → policy), with NO host access. A managed-ceiling deny, a
+      // protected-path deny, or a deny rule stops the command here — it never touches the sandbox.
+      const decision = pipeline.decide({
+        callId,
+        toolName: 'run_shell',
+        rawArguments,
+        policyContext: userContext,
+      });
+      if (decision.status === 'denied') {
+        record({ exitCode: null, output: `[denied] ${decision.reason}`, truncated: false });
+        return { status: 'denied', reason: decision.reason };
+      }
+      if (decision.status === 'rejected') {
+        record({ exitCode: null, output: `[rejected] ${decision.message}`, truncated: false });
+        return { status: 'rejected', message: decision.message };
+      }
+      if (decision.status === 'needs-approval') {
+        // A direct user action is not a model turn: rather than silently run something the ceiling
+        // wanted a prompt for, decline it and record the reason. `!` never auto-approves.
+        record({
+          exitCode: null,
+          output: `[declined] requires approval: ${decision.reason}`,
+          truncated: false,
+        });
+        return { status: 'denied', reason: decision.reason };
+      }
+
+      // Approved (a user-actor `allow`/`passthrough`). Execute under the configured sandbox isolation.
+      const outcome = await pipeline.execute({
+        callId,
+        toolName: 'run_shell',
+        rawArguments,
+        policyContext: userContext,
+        grant: GRANT,
+        isolation,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+      if (outcome.status !== 'executed') {
+        const reason =
+          outcome.status === 'denied' ? outcome.reason : `not executed (${outcome.status})`;
+        record({ exitCode: null, output: `[${outcome.status}] ${reason}`, truncated: false });
+        return outcome.status === 'denied'
+          ? { status: 'denied', reason: outcome.reason }
+          : { status: 'rejected', message: reason };
+      }
+      if (!outcome.response.ok) {
+        record({
+          exitCode: null,
+          output: `[error:${outcome.response.error.category}] ${outcome.response.error.message}`,
+          truncated: false,
+        });
+        return { status: 'executed', exitCode: null, truncated: false };
+      }
+      const result = outcome.response.result as {
+        exitCode: number | null;
+        stdout: string;
+        stderr: string;
+        truncated: boolean;
+      };
+      const output = [result.stdout, result.stderr].filter((s) => s.length > 0).join('\n');
+      record({ exitCode: result.exitCode, output, truncated: result.truncated });
+      return { status: 'executed', exitCode: result.exitCode, truncated: result.truncated };
+    },
     runTurn: async (input) => {
       const result = await engine.run({
         threadId: input.threadId,

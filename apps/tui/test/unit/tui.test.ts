@@ -326,3 +326,57 @@ describe('@-file completion (UI-04)', () => {
   // ("a hostile filename is returned as inert SafeText"). The editor is typed to accept only
   // `SafeText` for `display`, so the trust boundary is enforced by the compiler, not this test.
 });
+
+/**
+ * `!`-direct shell action in the editor (UI-04). A single line starting with `!` is a USER command:
+ * Enter dispatches it through `onShell` (the real sandboxed pipeline lives behind that callback) and
+ * clears the buffer — it is NOT a message and starts NO model turn. With no `onShell` wired, a `!`
+ * line submits as ordinary text, so the feature degrades safely.
+ */
+describe('!-direct shell action (UI-04)', () => {
+  it('Enter on a !-line runs it via onShell, strips the bang, and does not submit', async () => {
+    const onShell = vi.fn();
+    const onSubmit = vi.fn();
+    const { stdin } = mount(
+      h(Editor, { onSubmit, onInterrupt: vi.fn(), onExit: vi.fn(), onShell, busy: false }),
+    );
+    for (const ch of '!echo hi') stdin.write(ch);
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(onShell).toHaveBeenCalledWith('echo hi');
+    expect(onShell).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('shows a hint that a !-line is a direct action, not a model turn', async () => {
+    const { stdin, lastFrame } = mount(
+      h(Editor, { onSubmit: vi.fn(), onInterrupt: vi.fn(), onExit: vi.fn(), onShell: vi.fn() }),
+    );
+    for (const ch of '!ls') stdin.write(ch);
+    await tick();
+    expect(lastFrame()).toContain('no model turn');
+  });
+
+  it('with no onShell wired, a !-line submits as ordinary text (safe degrade)', async () => {
+    const onSubmit = vi.fn();
+    const { stdin } = mount(h(Editor, { onSubmit, onInterrupt: vi.fn(), onExit: vi.fn() }));
+    for (const ch of '!echo hi') stdin.write(ch);
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(onSubmit).toHaveBeenCalledWith('!echo hi');
+  });
+
+  it('is inert while busy — Enter on a !-line does not dispatch a second action', async () => {
+    const onShell = vi.fn();
+    const { stdin } = mount(
+      h(Editor, { onSubmit: vi.fn(), onInterrupt: vi.fn(), onExit: vi.fn(), onShell, busy: true }),
+    );
+    for (const ch of '!echo hi') stdin.write(ch);
+    await tick();
+    stdin.write(ENTER);
+    await tick();
+    expect(onShell).not.toHaveBeenCalled();
+  });
+});

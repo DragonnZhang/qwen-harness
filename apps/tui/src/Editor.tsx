@@ -65,6 +65,11 @@ function clearBuffer(state: EditorState): EditorState {
   return deleteSelection(moveBufferEnd(moveBufferStart(state), true));
 }
 
+/** True when the buffer is a single-line `!` DIRECT shell action (UI-04), not a message. */
+function isShellLine(text: string): boolean {
+  return text.startsWith('!') && !text.includes('\n');
+}
+
 function LineWithCursor({ line, col }: { line: SafeText; col: number }): ReactElement {
   const graphemes = toGraphemes(line);
   const before = graphemes.slice(0, col).join('');
@@ -84,6 +89,7 @@ export function Editor({
   onInterrupt,
   onExit,
   onCycleMode,
+  onShell,
   busy = false,
   config,
   history = [],
@@ -97,6 +103,8 @@ export function Editor({
   onInterrupt: () => void;
   onExit: () => void;
   onCycleMode?: (() => void) | undefined;
+  /** Run a `!<command>` direct user shell action (UI-04). Absent → `!` lines submit as plain text. */
+  onShell?: ((command: string) => void) | undefined;
   busy?: boolean;
   config?: Partial<EditorConfig> | undefined;
   history?: readonly string[] | undefined;
@@ -144,6 +152,9 @@ export function Editor({
   const fileMatches = atQuery !== null ? listFilesFor(atQuery) : [];
   const atOpen = fileMatches.length > 0;
   const fileSelected = atOpen ? Math.min(menuIndex, fileMatches.length - 1) : -1;
+
+  // A `!` line is a direct shell action (only when a live runtime wired `onShell`).
+  const shellLine = onShell !== undefined && isShellLine(currentText) && currentText.length > 1;
 
   const activity: Activity = busy ? 'busy' : 'idle';
   const runCommand = (command: SlashCommand): void => {
@@ -258,6 +269,18 @@ export function Editor({
         return;
       }
 
+      // `!`-DIRECT SHELL ACTION (UI-04). A single-line buffer starting with `!` is a USER shell
+      // command, not a message: Enter runs it through `onShell` (the real sandboxed pipeline, user as
+      // actor, NO model turn) and clears the buffer. The `!` is stripped. When no `onShell` is wired
+      // (no live runtime), a `!` line just submits as ordinary text — it is never silently dropped.
+      if (key.return && !busy && onShell !== undefined && isShellLine(currentText)) {
+        const command = currentText.slice(1).trim();
+        setState(clearBuffer(state));
+        setNotice(null);
+        if (command.length > 0) onShell(command);
+        return;
+      }
+
       // Buffer transitions use FUNCTIONAL updates so several inputs delivered before a re-render
       // (a fast typist or a paste split into events) compose from the latest committed state
       // instead of a stale render-time closure.
@@ -340,6 +363,7 @@ export function Editor({
       {menuOpen && matches.length === 0 && (
         <Text dimColor>no matching command — press Enter to send as text</Text>
       )}
+      {shellLine && <Text dimColor>! runs in the sandbox as a direct action — no model turn</Text>}
       {atOpen && (
         <Box flexDirection="column">
           {fileMatches.map((match, i) => (
