@@ -44,7 +44,7 @@ Sources: [DashScope model list](https://help.aliyun.com/zh/model-studio/text-gen
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | PV-01 | `provider-core` exposes normalized requests, items, stream events, capabilities, usage, errors, cancellation, and retry metadata without vendor wire types. | U,I | VERIFIED |
-| PV-02 | `provider-dashscope` defaults to `qwen3.7-max`, the configured compatible endpoint, `DASHSCOPE_API_KEY`, one-million-token declared context, and configurable reasoning effort. | U,I,L | IN_PROGRESS |
+| PV-02 | `provider-dashscope` defaults to `qwen3.7-max`, the configured compatible endpoint, `DASHSCOPE_API_KEY`, one-million-token declared context, and configurable reasoning effort. | U,I,L | VERIFIED |
 | PV-03 | Responses is primary and Chat is compatibility transport. Both normalize common runtime semantics while preserving the transport capability differences frozen in `task.md`. | U,I,L | VERIFIED |
 | PV-04 | Responses reasoning summaries may render/persist; Chat raw `reasoning_content` is discarded or reduced to status and never relabeled as summary/private reasoning. | U,I,F,L | IN_PROGRESS |
 | PV-05 | Responses works from complete function-call items without assuming argument deltas. Chat assembles `delta.tool_calls` by index/ID. Execute only after complete JSON and local schema validation. | U,P,I,F,L | VERIFIED |

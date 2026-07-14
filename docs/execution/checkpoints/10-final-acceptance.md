@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **84** |
-| IN_PROGRESS | 83 | 53 |
+| **VERIFIED** | 38 | **85** |
+| IN_PROGRESS | 83 | 52 |
 | REQUIRED | 57 | 41 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -176,7 +176,26 @@ none, then `export` emits the stable public JSONL). P is covered by the export r
 (`export-unknown-roundtrip.property.test.ts` — export is stable/independent of internal tables); I
 (`sessions.test.ts` integration) and D (`cli.md`) were already real.
 
-The remaining 94 rows are still genuinely not verifiable today — a required evidence class is absent
+**The live gate (`pnpm test:live`) was RUN and is NOT fully green — definition-of-done item 4 is NOT
+satisfied.** Result: 4 of 7 live tests passed (241s). PASSED: `provider-smoke` (real qwen3.7-max
+streams text, a reasoning summary, a tool call, and usage through the real adapter — this is
+**PV-02's L**, now flipped to VERIFIED: U/I were already real), `mcp` (live model calls a real stdio
+MCP tool), and the coding-loop fault-injection test. FAILED: (a) `coding-loop` "the model fixes the
+bug" and (b) `compaction` — both ended with the turn in state `failed` after the live model produced
+coherent text (compaction's was mid-task: "the output was truncated, let me get the exact line
+count") — consistent with the live model's non-deterministic, verbose exploration hitting a turn/budget
+limit (the compaction test deliberately grows a large transcript). The DETERMINISTIC equivalents
+(`evals/e2e/coding-loop.test.ts`, `long-context.test.ts`) and all ten golden paths and the full
+`pnpm check` are green, so the tool pipeline (including the TL-08 refactor) is sound; and (c)
+`tui-stream` timed out after 120s waiting for the streamed response, emitting a React
+"setState while rendering" warning from the live streaming path. That warning does NOT reproduce in
+the deterministic TUI unit/PTY suites and is not in any code path this session changed (for a plain
+prompt the `@`/`!`/slash menus are inert) — it is a pre-existing streaming↔editor render race, recorded
+here as a real open issue. **Honest status: the live lane is functional (credential, streaming, tools,
+MCP all work live) but the gate is not green; item 4 requires tuning the coding-loop/compaction live
+budgets for the current model and fixing the tui-stream streaming race.**
+
+The remaining 93 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
