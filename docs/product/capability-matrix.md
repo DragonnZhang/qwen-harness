@@ -63,7 +63,7 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| TL-01 | A registry binds stable name, description, input/output schema, annotations, permissions, concurrency metadata, timeout, cancellation, and handler. | U,I | IN_PROGRESS |
+| TL-01 | A registry binds stable name, description, input/output schema, annotations, permissions, concurrency metadata, timeout, cancellation, and handler. | U,I | VERIFIED |
 | TL-02 | Built-ins cover directory listing/glob, text search, paged file read, write, edit, structured apply-patch, shell, Git status/diff, user interaction, and output retrieval. | U,I,S,E | IN_PROGRESS |
 | TL-03 | File tools detect binary/encoding/size conditions, paginate large content, preserve line endings, and reject traversal, absolute-path escape, and symlink escape after canonicalization. | U,P,I,S | IN_PROGRESS |
 | TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | IN_PROGRESS |
@@ -74,7 +74,7 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 | TL-09 | Fully assembled safe calls may start while the model continues streaming, while persistence and ordering prevent early-execution duplication. | U,I,F,L | REQUIRED |
 | TL-10 | Oversized output is sanitized, durably offloaded, and represented by a bounded preview plus a retrievable reference. | U,I,S,E | REQUIRED |
 | TL-11 | ANSI, OSC, terminal title, clipboard, hyperlink, and control-sequence content from tools is untrusted and cannot forge TUI chrome or approvals. | U,P,S,T | IN_PROGRESS |
-| TL-12 | Tool results use a stable success/error shape with machine-readable categories, user-safe text, model-safe text, provenance, duration, truncation, and audit identity. | U,I | IN_PROGRESS |
+| TL-12 | Tool results use a stable success/error shape with machine-readable categories, user-safe text, model-safe text, provenance, duration, truncation, and audit identity. | U,I | VERIFIED |
 | TL-13 | Permissioned WebFetch and WebSearch validate schemes/domains/redirects/content types, limit downloads, respect network policy, sanitize untrusted content, and have a real configured provider or provider-native path plus local fixtures. | U,P,I,S,E,L | IN_PROGRESS |
 | TL-14 | Every model, repository, tool, hook, MCP, web, Markdown-link, and provider string crosses one `UntrustedText` sanitizer before TUI/log/export; only typed trusted-chrome values can affect terminal controls. | U,P,I,S,T | IN_PROGRESS |
 
