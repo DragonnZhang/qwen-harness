@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **79** |
-| IN_PROGRESS | 83 | 56 |
+| **VERIFIED** | 38 | **80** |
+| IN_PROGRESS | 83 | 55 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -141,7 +141,16 @@ share a `name`, `memory consolidate` resolves the conflict newer-wins and delete
 store then lists exactly one). U/I/F were already real (`consolidation.test.ts`, `dream.test.ts`).
 The full `pnpm check` passes with this feature.
 
-The remaining 99 rows are still genuinely not verifiable today — a required evidence class is absent
+**AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
+complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
+`packages/teams/src/protocol-messages.test.ts`: every one of the 15 required message types parses, the
+union has exactly those members (none missing, none extra), unknown types and a request missing its
+correlation id are rejected, and the request/response messages carry a correlation id. I (the protocol
+machinery — tracker/inbox) and E (`evals/e2e/team.test.ts` golden path 5: 3 real teammate processes
+round-trip plan-approval, permission, task-assignment, and shutdown messages, asserted at lines
+171-181) were already real.
+
+The remaining 98 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
