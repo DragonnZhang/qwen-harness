@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **73** |
-| IN_PROGRESS | 83 | 62 |
+| **VERIFIED** | 38 | **74** |
+| IN_PROGRESS | 83 | 61 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -80,7 +80,16 @@ read→edit→shell through the whole chain onto disk), S (the two alternate pat
 `hooks/test/security/hook-escalation.test.ts` a hook cannot flip a policy deny to allow;
 `mcp/test/security/malicious-tool.test.ts` an MCP tool cannot bypass a managed deny).
 
-The remaining 105 rows are still genuinely not verifiable today — a required evidence class is absent
+**SS-06 (JSONL export / deterministic replay) is now VERIFIED** — its only gap was `U` over the
+already-wired `packages/storage/src/export.ts`. Added `packages/storage/test/unit/export.test.ts`
+covering the export FORMAT contract (one header line + one JSON event per line), unit-level round-trip
+identity, replay into a fresh store rebuilding the identical projection, and `importJsonl`'s
+validation branches (missing header, foreign format, too-new version, event-count mismatch). Its other
+classes were already real: P (`export-unknown-roundtrip.property.test.ts`), I (`event-store.test.ts`
+"deterministic projection rebuild (SS-01, SS-06)"), S (`redaction.test.ts` — a secret never reaches
+SQLite or the JSONL export), E (`recovery.test.ts` / `fresh-install.test.ts`).
+
+The remaining 104 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
