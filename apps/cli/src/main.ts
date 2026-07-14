@@ -154,7 +154,9 @@ export async function main(deps: CliDeps): Promise<number> {
     deps.stdout('  side-effects <id> resolve <sid> --found <completed|failed>');
     deps.stdout('  instructions           show the AGENTS.md files in effect, with provenance');
     deps.stdout('  skills                 list discoverable skills');
-    deps.stdout('  memory [add ...]       show long-term memory with provenance, or store one');
+    deps.stdout(
+      '  memory [add|consolidate]  show/store long-term memory, or dedup+conflict-resolve it',
+    );
     deps.stdout('  mcp [trust <server>]   show configured MCP servers, or trust a project server');
     deps.stdout('');
     deps.stdout('  task create <subject> --active <form> [--blocked-by 1,2] [--desc ...]');
@@ -828,6 +830,31 @@ async function inspectCommand(
         return 1;
       }
       deps.stdout(`stored ${outcome.memory.name} -> ${outcome.path}`);
+      return 0;
+    }
+
+    if (positional[0] === 'consolidate') {
+      const result = await memory.consolidate();
+      if (asJson) {
+        deps.stdout(
+          JSON.stringify({
+            kept: result.kept,
+            conflicts: result.conflicts.length,
+            retired: result.retired.length,
+            removed: result.removed.length,
+          }),
+        );
+        return 0;
+      }
+      deps.stdout(
+        `consolidated: ${result.kept} kept, ${result.conflicts.length} conflict(s) resolved, ` +
+          `${result.retired.length} retired, ${result.removed.length} file(s) removed`,
+      );
+      for (const conflict of result.conflicts) {
+        deps.stdout(
+          `  conflict '${conflict.name}': kept by ${conflict.resolvedBy}, ${conflict.losers.length} superseded`,
+        );
+      }
       return 0;
     }
 

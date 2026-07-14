@@ -1,5 +1,6 @@
 import {
   MemoryStore,
+  consolidateMemories,
   dedupKey,
   maybeExtract,
   recordsToCandidates,
@@ -8,8 +9,10 @@ import {
   type Env,
   type LoadedMemoryRecord,
   type Memory,
+  type MemoryConflict,
   type MemoryProposal,
   type MemoryScope,
+  type RetiredMemory,
   type RetrievalResult,
 } from '@qwen-harness/memory';
 import type { Clock } from '@qwen-harness/protocol';
@@ -57,6 +60,18 @@ export interface MemorySurface {
   add(proposal: MemoryProposal, scope: MemoryScope): Promise<AddOutcome>;
   /** The directory a scope resolves to on this host, or null when it does not apply. */
   dirFor(scope: MemoryScope): string | null;
+  /**
+   * Deduplicate and conflict-resolve the stored memories, deleting the superseded files (MM-04). The
+   * mechanical pass: exact duplicates collapse to the newest, a name held by conflicting variants
+   * keeps the newer (tie → more-specific) with recorded provenance, and every non-surviving file is
+   * removed. This is the CLI trigger the `consolidateMemories` engine previously lacked.
+   */
+  consolidate(): Promise<{
+    kept: number;
+    conflicts: readonly MemoryConflict[];
+    retired: readonly RetiredMemory[];
+    removed: readonly string[];
+  }>;
 }
 
 export type AddOutcome =
@@ -137,6 +152,23 @@ export function createMemorySurface(opts: MemorySurfaceOptions): MemorySurface {
 
       const written = await store.writeMemory(dir, memory, scope);
       return { kind: 'stored', path: written.path, memory };
+    },
+
+    consolidate: async () => {
+      // `LoadedMemoryRecord` is structurally a `MemoryRecord` (it carries `updatedAt`), so the
+      // records feed the engine directly. The plan's `kept` are the survivors; every other loaded
+      // file — an exact duplicate, a conflict loser, or a retired memory — is removed from disk.
+      const { records } = await listAll();
+      const plan = consolidateMemories(records);
+      const keptPaths = new Set(plan.kept.map((r) => r.provenance.path));
+      const removed: string[] = [];
+      for (const record of records) {
+        if (!keptPaths.has(record.provenance.path)) {
+          await store.removeMemory(record.provenance.path);
+          removed.push(record.provenance.path);
+        }
+      }
+      return { kept: plan.kept.length, conflicts: plan.conflicts, retired: plan.retired, removed };
     },
   };
 }
