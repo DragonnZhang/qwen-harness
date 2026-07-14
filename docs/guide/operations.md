@@ -168,23 +168,39 @@ whole report.
 
 ## Telemetry
 
-**Telemetry is opt-in and defaults to `false`.**
+**Telemetry is local, opt-in, and defaults to `false`.** Nothing is sent anywhere; the trace is JSONL
+on your disk (OB-01, OB-02). Enable it in `.qwen-harness/config.json`:
 
 ```json
-{ "telemetry": { "enabled": true } }
+{
+  "telemetry": { "enabled": true, "level": "info", "retentionDays": 7 }
+}
 ```
 
-or `QWEN_HARNESS_TELEMETRY=1`.
+or, for a single process, `QWEN_HARNESS_TELEMETRY=1`.
 
-What it would emit: structured trace records (`ts`, `level`, `category` such as `provider.request` /
-`tool.execute` / `policy.decision`, `message`, `fields`, `correlationId`), with a redaction function
-applied to both the message and the fields before anything is written, and a file sink that appends
-JSONL.
+- **`telemetry.enabled`** (default `false`) — the master switch. When off, no tracer is constructed,
+  no file is opened, and not one decorator is installed: "opt-in" means the code path does not run.
+- **`telemetry.level`** — verbosity, one of `debug` | `info` | `warn` | `error` (default `info`). It
+  changes how much is written, never whether something is safe to write.
+- **`telemetry.retentionDays`** (default `7`) — one JSONL file is written per UTC day under
+  `.qwen-harness/trace/` (e.g. `trace-2026-07-13.jsonl`); files older than the window are deleted when
+  telemetry next opens, so retention holds even if the harness rarely runs.
 
-**⚠ Nothing emits telemetry today.** The `telemetry` package is not imported by a single line of
-source anywhere in the product — no tracer is constructed, no sink is given a path, no span is
-recorded. Turning the flag on currently does nothing. It is honest to say the switch exists and the
-plumbing behind it does not.
+Each record has `ts`, `level`, `category` (e.g. `provider.request` / `tool.execute` /
+`policy.decision`), `message`, and `fields`. Every record is redacted — the credential value,
+`sk-…`/`Bearer …` tokens, and other secret shapes become `[REDACTED]` before the record reaches the
+file — and the redactor decorates the real sink, so a field a caller forgot is still scrubbed.
+
+Read the trace for a human, or as JSON for another tool:
+
+```sh
+qwen-harness trace          # one line per record: timestamp, level, category, message, fields
+qwen-harness trace --json   # one JSON record per line — pipe to jq or a script
+```
+
+If telemetry was never enabled there is nothing to print, and `trace` tells you how to turn it on
+rather than failing; a corrupt line is reported on stderr, never silently skipped.
 
 ## Support bundle
 

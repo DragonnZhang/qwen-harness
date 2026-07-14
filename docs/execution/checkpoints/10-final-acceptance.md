@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **74** |
-| IN_PROGRESS | 83 | 61 |
+| **VERIFIED** | 38 | **75** |
+| IN_PROGRESS | 83 | 60 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -89,7 +89,19 @@ classes were already real: P (`export-unknown-roundtrip.property.test.ts`), I (`
 "deterministic projection rebuild (SS-01, SS-06)"), S (`redaction.test.ts` — a secret never reaches
 SQLite or the JSONL export), E (`recovery.test.ts` / `fresh-install.test.ts`).
 
-The remaining 104 rows are still genuinely not verifiable today — a required evidence class is absent
+**OB-02 (observability readable via CLI/JSON) is now VERIFIED.** Its `U`/`S` were real
+(`telemetry.test.ts` opt-in + retention; `telemetry-redaction.test.ts` canary) but the core
+"readable via CLI/JSON" claim was untested and the docs still said telemetry was unwired. Added
+`apps/cli/test/integration/trace-cli.test.ts` (the `trace` command prints the JSONL human-readably and
+as one JSON record per line, warns on a corrupt line, and explains how to opt in when disabled) for
+`I`, and corrected `docs/guide/operations.md`'s Telemetry section — it wrongly claimed "nothing emits
+telemetry today," which is stale since telemetry is wired (`apps/cli/src/main.ts` `openTelemetry` →
+tracer). The section now documents opt-in, `level`, `retentionDays`, the `trace`/`trace --json`
+commands, and redaction, with runnable examples (`D`). Also note: PV-02 (`U`) and PV-10 (`P`) and
+MM-02 (`P`) now have complete DETERMINISTIC evidence and are flippable once their remaining live/e2e
+class lands.
+
+The remaining 103 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
