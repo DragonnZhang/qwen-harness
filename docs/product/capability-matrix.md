@@ -167,8 +167,8 @@ Sources: [s08](https://learn.shareai.run/en/s08/), [s09](https://learn.shareai.r
 |---|---|---|---|
 | CX-01 | Context budgets use provider capability and measured serialized size/token estimates, reserve response/tool headroom, and expose current utilization. | U,P,I,T | IN_PROGRESS |
 | CX-02 | Cheap reduction runs first: offload large results, prune only safe middle content, and replace old tool results while retaining call/result pairing and durable references. | U,P,I,F | VERIFIED |
-| CX-03 | Threshold compaction writes the full transcript boundary, creates a structured summary, and preserves user goal, constraints, plan, todos/tasks, active files, decisions, errors, and unfinished obligations. | U,I,F,E,L | IN_PROGRESS |
-| CX-04 | Proactive compaction and reactive overflow compaction are distinct, bounded, observable paths with pre/post hooks and retry circuit breakers. | U,P,I,F,L | REQUIRED |
+| CX-03 | Threshold compaction writes the full transcript boundary, creates a structured summary, and preserves user goal, constraints, plan, todos/tasks, active files, decisions, errors, and unfinished obligations. | U,I,F,E,L | VERIFIED |
+| CX-04 | Proactive compaction and reactive overflow compaction are distinct, bounded, observable paths with pre/post hooks and retry circuit breakers. | U,P,I,F,L | VERIFIED |
 | CX-05 | Compaction restores goal/state plus root/unscoped instructions and auto memory; nested/path rules return only after matching access. Reattach recent skills at 5K each/25K total and preserve file/worktree/agent/team/tool/permission state without inventing completion. | U,I,F,E | REQUIRED |
 | CX-06 | `/compact [focus]`, `/context`, and `/clear` have explicit effects; context thrashing and diminishing returns stop safely. | U,I,T,E | IN_PROGRESS |
 | MM-01 | Long-term memory is Markdown with validated YAML metadata. Startup loads the first 200 lines or 25 KiB of `MEMORY.md`; topic files load on demand, and `/memory` exposes audited provenance/editing. Types include user, feedback, project, and reference. | U,I,S,T,D | IN_PROGRESS |
@@ -232,7 +232,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| MC-01 | MCP client connects, initializes, discovers, invokes, refreshes, and disconnects servers using standards-conformant JSON-RPC. | U,I,F,E,L | REQUIRED |
+| MC-01 | MCP client connects, initializes, discovers, invokes, refreshes, and disconnects servers using standards-conformant JSON-RPC. | U,I,F,E,L | VERIFIED |
 | MC-02 | Support stdio, Streamable HTTP, SSE, WebSocket, and in-process transports. `ide-sse` is this product's documented SSE connection profile/handshake, not an undocumented proprietary protocol. | U,I,F,D | REQUIRED |
 | MC-03 | Names are normalized as `mcp__server__tool`; collisions, invalid characters, untrusted descriptions, schema abuse, and built-in precedence are handled deterministically. | U,P,I,S | VERIFIED |
 | MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | VERIFIED |
