@@ -251,7 +251,7 @@ Source: [Claude Code sessions](https://code.claude.com/docs/en/sessions) plus th
 |---|---|---|---|
 | SS-01 | Threads and turns persist incrementally in a versioned SQLite WAL event store with transactional projections and migrations. | U,P,I,F | VERIFIED |
 | SS-02 | Create/list/continue/resume by picker/name/ID, rename, fork/branch, export, archive, delete, and clear-context are available in TUI/CLI with canonical-repo/global search and name rules from defaults. | U,I,T,E | IN_PROGRESS |
-| SS-03 | Fork creates new identity and history lineage without changing the original; export is a stable public schema independent from internal tables. | U,P,I,E,D | IN_PROGRESS |
+| SS-03 | Fork creates new identity and history lineage without changing the original; export is a stable public schema independent from internal tables. | U,P,I,E,D | VERIFIED |
 | SS-04 | Crash at every model/tool/approval/storage boundary recovers to a coherent state and never repeats a known-complete side effect. | P,I,F,E | VERIFIED |
 | SS-05 | Intent, start, output, and result identities make side effects idempotent or explicitly indeterminate; destructive indeterminate work requires inspection. | U,P,I,F,S | VERIFIED |
 | SS-06 | JSONL trace/export and deterministic replay can rebuild projections, preserve unknown events, compare runtime decisions, and scrub secrets. | U,P,I,S,E | VERIFIED |
