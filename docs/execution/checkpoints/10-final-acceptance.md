@@ -16,11 +16,11 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **60** |
-| IN_PROGRESS | 83 | 71 |
-| REQUIRED | 57 | 47 |
+| **VERIFIED** | 38 | **65** |
+| IN_PROGRESS | 83 | 68 |
+| REQUIRED | 57 | 45 |
 
-At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **60** with
+At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **65** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
 the `P` gap; +3 from the installation/packaging guide closing `D` on PK-01/02/04; +5 near-misses
 (ER-07 orphan-process + recovery-secret, PS-03 grant expiry/revocation, MC-04 annotation property,
@@ -34,7 +34,7 @@ answer) looped until budget-exhausted. Every prior test passed only because none
 a result. This is the seventh and most severe "correct-looking but broken" defect this project
 surfaced by running the real thing rather than trusting green unit suites.
 
-The remaining 118 rows are still genuinely not verifiable today — a required evidence class is absent
+The remaining 113 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
