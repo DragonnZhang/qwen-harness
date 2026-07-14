@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defaultAuthority, NO_MANAGED_RESTRICTIONS } from '@qwen-harness/policy';
@@ -186,5 +187,95 @@ describe('output limits and preview (BG-05)', () => {
     const task = manager.start(startInput({ placement: 'background' }));
     runner.emitOutput(task.id, 'y'.repeat(OUTPUT_WARN_BYTES));
     expect(manager.get(task.id)?.outputWarned).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BG-04 property: completion notification is IDEMPOTENT and correctly
+// ATTRIBUTED. Over random sequences of exit / duplicate-exit / stop events, a
+// task settles exactly once (a duplicate exit never double-settles), and every
+// notification carries a fresh `ntf_` id — never the tool-call id, never the
+// task id.
+// ---------------------------------------------------------------------------
+
+type EventAction = 'exit-ok' | 'exit-fail' | 'stop';
+
+describe('completion idempotency & attribution (BG-04, property)', () => {
+  it('settles each task exactly once and never reuses the tool-call id, across random duplicate exits', () => {
+    const taskSpec = fc.record({ hasToolCall: fc.boolean() });
+    const event = fc.record({
+      index: fc.nat(),
+      action: fc.constantFrom<EventAction>('exit-ok', 'exit-fail', 'stop'),
+    });
+
+    fc.assert(
+      fc.property(
+        fc.array(taskSpec, { minLength: 1, maxLength: 8 }),
+        fc.array(event, { minLength: 1, maxLength: 30 }),
+        (taskSpecs, events) => {
+          const { manager, runner } = setup();
+
+          const tasks = taskSpecs.map((spec, i) => {
+            const view = manager.start(
+              startInput({
+                placement: 'background',
+                ...(spec.hasToolCall ? { toolCallId: `call_${i}` } : {}),
+              }),
+            );
+            return { id: view.id, toolCallId: spec.hasToolCall ? `call_${i}` : null };
+          });
+
+          // Which tasks received at least one terminal trigger (exit or stop).
+          const triggered = new Set<string>();
+          for (const ev of events) {
+            const task = tasks[ev.index % tasks.length];
+            if (task === undefined) continue;
+            triggered.add(task.id);
+            if (ev.action === 'stop') manager.stop(task.id);
+            else
+              runner.exit(
+                task.id,
+                ev.action === 'exit-ok'
+                  ? { ok: true, code: 0 }
+                  : { ok: false, code: 1, reason: 'boom' },
+              );
+          }
+
+          const notifications = manager.notifications.drain();
+
+          // Attribution: every emitted notification is a fresh `ntf_` id, and NEVER borrows the
+          // tool-call id or the task id it is about.
+          const toolCallIds = new Set(
+            tasks.map((t) => t.toolCallId).filter((v): v is string => v !== null),
+          );
+          const taskIds = new Set(tasks.map((t) => t.id));
+          for (const n of notifications) {
+            expect(n.id).toMatch(/^ntf_/);
+            expect(toolCallIds.has(n.id)).toBe(false);
+            expect(taskIds.has(n.id)).toBe(false);
+          }
+
+          // Idempotency: exactly one settle notification per triggered task — a duplicate exit or a
+          // stop-then-exit never produces a second settlement.
+          for (const task of tasks) {
+            const settlements = notifications.filter(
+              (n) =>
+                n.subjectId === task.id &&
+                (n.kind === 'background-completion' || n.kind === 'task-failure'),
+            );
+            expect(settlements).toHaveLength(triggered.has(task.id) ? 1 : 0);
+            // A triggered task is terminal; an untouched one is still running.
+            const status = manager.get(task.id)?.status;
+            if (triggered.has(task.id)) {
+              expect(['succeeded', 'failed', 'cancelled']).toContain(status);
+            } else {
+              expect(status).toBe('running');
+            }
+          }
+          return true;
+        },
+      ),
+      { numRuns: 200 },
+    );
   });
 });

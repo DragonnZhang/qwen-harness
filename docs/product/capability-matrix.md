@@ -28,14 +28,14 @@ Sources: [s01](https://learn.shareai.run/en/s01/), [s20](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | RT-01 | Durable message history drives a repeated model -> tool -> result -> model loop until an explicit terminal transition. | U,I,E,L | VERIFIED |
-| RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | IN_PROGRESS |
+| RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | VERIFIED |
 | RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | VERIFIED |
 | RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | IN_PROGRESS |
 | RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | IN_PROGRESS |
 | RT-06 | Cancellation propagates through one abort tree to model streams, tools, process groups, background work, MCP, subagents, teams, and UI. | I,F,T,E | REQUIRED |
 | RT-07 | Runtime supports steering input during a turn without corrupting current tool/result pairing, plus interrupt and resume. | U,I,T,E | REQUIRED |
 | RT-08 | Runtime is headless and deterministic under injected provider, tool, clock, ID, storage, policy, and notification interfaces. | U,I,E | VERIFIED |
-| RT-09 | Thread -> Turn -> Item/Event schemas are versioned; unknown future events survive export/import without silent loss. | U,P,I | IN_PROGRESS |
+| RT-09 | Thread -> Turn -> Item/Event schemas are versioned; unknown future events survive export/import without silent loss. | U,P,I | VERIFIED |
 
 ## B. DashScope provider and normalized model protocol
 
@@ -87,7 +87,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | PS-01 | Profiles are `plan`, `ask`, `auto-accept-edits`, and `yolo`, with documented compatibility aliases where useful. Current profile is visible in every client. | U,I,T,E | IN_PROGRESS |
 | PS-02 | `plan` exposes read/search/analysis only and enforces read-only isolation; unavailable mutations cannot be smuggled through shell, hooks, MCP, agents, or scripts. | U,P,I,S,E | VERIFIED |
 | PS-03 | `ask` prompts for normalized side effects and supports exact once, session, or narrowly matched grants with expiry and revocation. | U,P,I,S,T | REQUIRED |
-| PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | IN_PROGRESS |
+| PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | VERIFIED |
 | PS-05 | `yolo` removes prompts and default isolation, grants the maximum authority allowed by managed policy, records the choice, and shows a persistent unspoofable danger indicator. Managed deny and credential/redaction invariants remain. | U,I,S,T | VERIFIED |
 | PS-06 | Decisions support allow/deny/ask/passthrough, hard deny dominates every scope, and content safety rules cannot be elevated by repository config or hooks. | U,P,I,S | VERIFIED |
 | PS-07 | Managed policy is an immutable safety ceiling. Inside it, config provenance follows the exact per-source rules in `docs/product/defaults.md`; deny merges across scopes and doctor explains every winning value. | U,P,I,S,D | IN_PROGRESS |
@@ -98,11 +98,11 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | SB-01 | Linux isolation has a real backend using bubblewrap/namespaces or an equally strong documented backend; degraded policy-only mode is explicit and fails the release gate. | U,I,S,E | VERIFIED |
 | SB-02 | Sandbox controls canonical filesystem paths, process tree, environment, network, devices, IPC, resource/output limits, and cleanup. | P,I,F,S | IN_PROGRESS |
 | SB-03 | Sandbox capability detection and diagnostics run at startup and through `doctor`; an unavailable required backend fails safe. | U,I,E,D | VERIFIED |
-| SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | IN_PROGRESS |
+| SB-04 | Every model-initiated file, shell, and Git handler runs in a separate sandbox-created worker over capability-scoped RPC; attacks prove main-process Node I/O cannot bypass mounts/network/process limits. | U,P,I,F,S | VERIFIED |
 | HK-01 | Implement these 30 hook events: PreToolUse, PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop, StopFailure, Setup, UserPromptSubmit, Notification, PermissionRequest, PermissionDenied, SubagentStart, SubagentStop, PreCompact, PostCompact, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, and PostToolBatch. | U,I,E | IN_PROGRESS |
 | HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | IN_PROGRESS |
-| HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | IN_PROGRESS |
-| HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | IN_PROGRESS |
+| HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | VERIFIED |
+| HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | VERIFIED |
 | HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | IN_PROGRESS |
 
 ## E. Todo, durable task graph, and plans
@@ -134,12 +134,12 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | IN_PROGRESS |
 | AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | IN_PROGRESS |
 | AG-07 | Protocol messages cover normal message, idle, permission request/response, plan approval request/response, shutdown request/approved/rejected, task assignment, team permission update, mode-set, sandbox permission request/response, and termination. | U,I,E | IN_PROGRESS |
-| AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | IN_PROGRESS |
+| AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | VERIFIED |
 | AG-09 | Plan approval keeps the teammate read-only until accepted; rejection feedback requires revision and resubmission. | U,I,T,E | REQUIRED |
 | AG-10 | Graceful shutdown supports request, accept/reject with reason, cleanup, task release, process cancellation, and terminal event. | U,I,F,E | IN_PROGRESS |
 | AG-11 | Autonomous teammates cycle WORK -> IDLE -> WORK, prioritize shutdown, check inbox and task events, and atomically claim pending unowned unblocked tasks. | U,P,I,F,E | IN_PROGRESS |
 | AG-12 | Teammate failure, timeout, or lost heartbeat releases/requeues owned work according to policy and reports to lead without duplicate execution. | U,P,I,F,E | IN_PROGRESS |
-| AG-13 | Team definition/inbox/task graph/logical identity are durable, but lost OS processes are never shown running. Resume follows the incarnation, expired-request, task-lease, inbox, and explicit respawn semantics in `docs/product/defaults.md`. | U,P,I,F,E | IN_PROGRESS |
+| AG-13 | Team definition/inbox/task graph/logical identity are durable, but lost OS processes are never shown running. Resume follows the incarnation, expired-request, task-lease, inbox, and explicit respawn semantics in `docs/product/defaults.md`. | U,P,I,F,E | VERIFIED |
 | AG-14 | TUI supports team creation, member status, direct messaging, task ownership, plan approval, permission bubbling, peek/reply, attach/detach, and shutdown. | T,E | REQUIRED |
 
 ## G. Skills, instructions, and system prompt
@@ -201,7 +201,7 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 | BG-01 | Foreground/background is an explicit model/user parameter with a conservative heuristic fallback, not an opaque duration guess. | U,I,E | IN_PROGRESS |
 | BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | IN_PROGRESS |
 | BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | IN_PROGRESS |
-| BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | IN_PROGRESS |
+| BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | VERIFIED |
 | BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | IN_PROGRESS |
 | BG-06 | `/tasks` and TUI panels can list, inspect, tail, foreground/background, stop, and attribute background work without blocking the main input loop. | T,E | REQUIRED |
 | BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | IN_PROGRESS |
@@ -237,7 +237,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 | MC-03 | Names are normalized as `mcp__server__tool`; collisions, invalid characters, untrusted descriptions, schema abuse, and built-in precedence are handled deterministically. | U,P,I,S | VERIFIED |
 | MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | REQUIRED |
 | MC-05 | Managed-exclusive policy is the ceiling; otherwise MCP precedence is connector < plugin < user < approved project < local, with provenance and explicit project trust. | U,P,I,S,D | REQUIRED |
-| MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | REQUIRED |
+| MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | VERIFIED |
 | MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | IN_PROGRESS |
 | MC-08 | Server-to-agent notifications, elicitation, resources, prompts, reverse permission requests, and wake-up channels are attributed and policy checked. | U,I,F,S,E | REQUIRED |
 | MC-09 | Children inherit only approved MCP capabilities. Deferred schema refresh preserves the stable cache prefix; upfront-loaded schema content changes invalidate only their affected boundary, without leaking unavailable schemas. | U,P,I,S | REQUIRED |
