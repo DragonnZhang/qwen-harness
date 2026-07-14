@@ -27,6 +27,7 @@
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm architecture && pnpm build && pnpm test && pnpm test:integration && pnpm test:security && pnpm test:migrations && pnpm test:pty && pnpm test:e2e && pnpm test:performance && pnpm test:packaging && pnpm secrets:scan",
     "secrets:scan": "tsx scripts/secret-scan.ts",
     "doctor": "node apps/cli/dist/bin.js doctor",
+    "tui": "pnpm --filter @qwen-harness/tui build && node --env-file-if-exists=.env apps/tui/dist/tui.bundle.mjs",
     "probe:host": "bash scripts/probe-host.sh",
     "bootstrap": "bash scripts/bootstrap.sh",
     "release": "tsx scripts/release.ts",
