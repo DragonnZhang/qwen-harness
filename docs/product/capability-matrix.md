@@ -186,7 +186,7 @@ Source: [s11](https://learn.shareai.run/en/s11/) and [Claude Code error referenc
 |---|---|---|---|
 | ER-01 | Incomplete max-output responses are not committed as final history; bounded continuation persists intermediate evidence and detects diminishing returns. | U,I,F,L | REQUIRED |
 | ER-02 | Context overflow triggers bounded reactive compact and retry from a durable model boundary. | U,I,F,L | REQUIRED |
-| ER-03 | Transient network/rate/server errors retry before visible side effects; after visible output or tool execution, recovery avoids blind replay and asks/continues safely. | U,P,I,F,L | REQUIRED |
+| ER-03 | Transient network/rate/server errors retry before visible side effects; after visible output or tool execution, recovery avoids blind replay and asks/continues safely. | U,P,I,F,L | VERIFIED |
 | ER-04 | Image/media validation, stream abort, tool abort, hook block, token-budget continuation, overload, and unsupported capabilities have distinct typed paths. | U,I,F | REQUIRED |
 | ER-05 | Retry, continuation, compaction, fallback, and blocking limits are configurable, visible, and produce explicit final reasons. | U,P,I,T | REQUIRED |
 | ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | IN_PROGRESS |
