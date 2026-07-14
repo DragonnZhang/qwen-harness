@@ -155,7 +155,7 @@ Sources: [s07](https://learn.shareai.run/en/s07/), [s10](https://learn.shareai.r
 | IN-05 | Inline and forked skills have explicit context, tool, budget, permission, and result semantics; catalog and loaded-content token budgets are enforced. | U,P,I,E | REQUIRED |
 | IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | IN_PROGRESS |
 | IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | VERIFIED |
-| IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | IN_PROGRESS |
+| IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | VERIFIED |
 | IN-09 | Support minimal, default, proactive, coordinator, and agent-defined prompt modes with the activation, prompt delta, tool availability, policy inheritance, cache behavior, and observable tasks frozen in `docs/product/defaults.md`. | U,I,E,D | REQUIRED |
 | IN-10 | Instruction text is sent on every provider request when the transport does not inherit it; cache optimization cannot change behavior. | U,I,F,L | IN_PROGRESS |
 
@@ -240,7 +240,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 | MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | VERIFIED |
 | MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | IN_PROGRESS |
 | MC-08 | Server-to-agent notifications, elicitation, resources, prompts, reverse permission requests, and wake-up channels are attributed and policy checked. | U,I,F,S,E | REQUIRED |
-| MC-09 | Children inherit only approved MCP capabilities. Deferred schema refresh preserves the stable cache prefix; upfront-loaded schema content changes invalidate only their affected boundary, without leaking unavailable schemas. | U,P,I,S | REQUIRED |
+| MC-09 | Children inherit only approved MCP capabilities. Deferred schema refresh preserves the stable cache prefix; upfront-loaded schema content changes invalidate only their affected boundary, without leaking unavailable schemas. | U,P,I,S | VERIFIED |
 | MC-10 | Large output offload, tool search/lazy schema loading, monitor tasks, doctor UI, and per-server logs make MCP usable at scale. | U,I,T,E | REQUIRED |
 
 ## M. Sessions, persistence, and replay
