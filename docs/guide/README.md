@@ -24,6 +24,7 @@ but no application exposes it yet, this guide says so instead of implying you ca
 ## Read in this order
 
 1. [Getting started](getting-started.md) — prerequisites, install, `doctor`, your first task.
+1. [Installation & packaging](installation.md) — bootstrap, build, install/upgrade/rollback/uninstall, release artifacts.
 2. [The CLI](cli.md) — every command, every flag, every exit code, and the JSON output shape.
 3. [Permissions and approvals](permissions.md) — the four profiles, the deny-by-default engine,
    protected paths, and grants.
