@@ -555,3 +555,105 @@ describe('TurnEngine: transient provider-fault retry (RT-04)', () => {
     expect(result.state).toBe('failed');
   });
 });
+
+/**
+ * Regression: multi-round tool turns must send the model a COMPLETE call↔output pairing.
+ *
+ * The engine used to push the assistant's text into the intra-turn conversation but NOT the
+ * assistant's function-CALL items, so round 2 received an orphaned `function-output` with no
+ * matching `function-call`. Because the DashScope transport omits `previous_response_id` (local
+ * history is authoritative, PV-08), the model could not tell its call was answered and re-issued
+ * the identical call every round → `repeated-identical-calls` / budget-exhausted. This was invisible
+ * to every existing test because none required the model to CONSUME a tool result. A live
+ * MCP/compaction turn surfaced it. This test captures the exact request input round 2 receives.
+ */
+describe('TurnEngine: multi-round conversation carries the function-call, not just its output', () => {
+  const THREAD_P = 'thr_00pair' as ThreadId;
+  const CORR_P = 'cor_00pair' as CorrelationId;
+
+  it('round 2 input contains the function-call paired before its function-output', async () => {
+    const clock = new ManualClock(1_700_000_000_000);
+    const ids = new SequentialIds();
+    const store = new EventStore({ path: ':memory:', clock, ids });
+    store.append({
+      threadId: THREAD_P,
+      correlationId: CORR_P,
+      permissionProfile: 'yolo',
+      actor: USER_ACTOR,
+      payload: { type: 'thread-created', cwd: '/w', canonicalRepo: null, name: null },
+    });
+
+    // Records the `input` given to each stream() call.
+    const inputs: unknown[][] = [];
+    const provider: ModelProvider = {
+      capabilities: freezeCapabilities({
+        textStreaming: true,
+        reasoningSummary: false,
+        reasoningEffortGranularity: 'none',
+        incrementalToolArgs: false,
+        background: false,
+        structuredOutput: false,
+        toolStream: false,
+      }),
+      async *stream(request): AsyncGenerator<ProviderStreamEvent> {
+        inputs.push([...request.input]);
+        if (inputs.length === 1) {
+          // Round 1: call a tool.
+          yield {
+            type: 'tool-call-complete',
+            itemId: 'it_call1',
+            callId: 'call_pair01',
+            toolName: 'read_file',
+            argumentsJson: '{"path":"a.ts"}',
+            arguments: { path: 'a.ts' },
+          } as ProviderStreamEvent;
+          yield { type: 'done', finishReason: 'tool_calls' } as ProviderStreamEvent;
+        } else {
+          // Round 2: the model saw the result, answers, stops.
+          yield { type: 'text-done', itemId: 'm', text: 'done' };
+          yield { type: 'done', finishReason: 'stop' };
+        }
+      },
+    };
+
+    const engine = new TurnEngine({
+      provider,
+      tools: recordingExecutor(),
+      sink: {
+        append: (e) => store.append({ ...e, causationId: (e.causationId ?? null) as never }),
+        mayExecute: (key) => store.mayExecute(key),
+      },
+      ids,
+      clock,
+    });
+    const result = await engine.run({
+      threadId: THREAD_P,
+      correlationId: CORR_P,
+      permissionProfile: 'yolo',
+      model: 'qwen3.7-max',
+      instructions: 'be terse',
+      history: [],
+      userText: 'read a.ts',
+      tools: [],
+      actor: MODEL_ACTOR,
+    });
+
+    expect(result.state).toBe('completed');
+    expect(inputs.length).toBe(2); // exactly two rounds — it converged, did not loop
+
+    // The round-2 input must contain BOTH the function-call and its function-output, call first.
+    const round2 = inputs[1] as Array<{ type: string; callId?: string }>;
+    const callIdx = round2.findIndex(
+      (i) => i.type === 'function-call' && i.callId === 'call_pair01',
+    );
+    const outIdx = round2.findIndex(
+      (i) => i.type === 'function-output' && i.callId === 'call_pair01',
+    );
+    expect(
+      callIdx,
+      'function-call for the tool call must be present in round-2 input',
+    ).toBeGreaterThanOrEqual(0);
+    expect(outIdx, 'function-output must be present').toBeGreaterThanOrEqual(0);
+    expect(callIdx).toBeLessThan(outIdx); // call before output — a valid pairing
+  });
+});

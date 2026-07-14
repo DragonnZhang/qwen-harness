@@ -521,6 +521,22 @@ export class TurnEngine {
         if (round.assistantText) {
           conversation.push({ type: 'message', role: 'assistant', text: round.assistantText });
         }
+        // AND feed back the assistant's function-CALL items, so that when the tool phase appends the
+        // matching function-OUTPUTs the model sees a complete call↔output pairing. Without this the
+        // next round receives orphaned outputs (a `function_call_output` with no `function_call`);
+        // because the DashScope transport deliberately omits `previous_response_id` (local history
+        // is authoritative, PV-08), the model cannot tell its call was answered and re-issues the
+        // identical call every round — the turn dies `repeated-identical-calls` / budget-exhausted.
+        // This mirrors the canonical durable rebuild in `apps/cli/src/sessions.ts::reconstructHistory`,
+        // which emits function-call THEN function-output; the hot loop must produce the same shape.
+        for (const call of round.toolCalls) {
+          conversation.push({
+            type: 'function-call',
+            callId: call.callId,
+            name: call.toolName,
+            argumentsJson: call.argumentsJson,
+          });
+        }
         calls = round.toolCalls;
       }
     } catch (e) {
