@@ -25,7 +25,12 @@ import {
   toolParametersJsonSchema,
   type BuiltinTool,
 } from '@qwen-harness/tools-builtin';
-import { ToolRegistry } from '@qwen-harness/tools-core';
+import {
+  ToolRegistry,
+  planBatches as planToolBatches,
+  type PlannedCall,
+  type ResourceFootprint,
+} from '@qwen-harness/tools-core';
 import { ToolWorkerClient, type WorkerGrant } from '@qwen-harness/tool-worker';
 import {
   TurnEngine,
@@ -386,6 +391,42 @@ export function pipelineExecutor(opts: {
         truncated: false,
         durationMs,
       };
+    },
+
+    // TL-08: partition a round's calls into ordered batches by REAL resource conflict. The tools
+    // layer owns this because it needs each tool's annotations and per-call footprint; the engine
+    // just runs the returned groups (parallel within a group, groups in sequence). A conservative
+    // default — unknown tool or a footprint that cannot be derived from unvalidated args — is an
+    // unbounded mutation, which `planBatches` never parallelizes. So a call is only ever grouped for
+    // concurrency when its real footprint is known and read-only.
+    planBatches: (calls) => {
+      const planned: PlannedCall[] = calls.map((c) => {
+        const tool = byName.get(c.toolName);
+        const conservative: PlannedCall = {
+          callId: c.callId as never,
+          toolName: c.toolName,
+          annotations: { readOnly: false, destructive: true, idempotent: false, openWorld: true },
+          footprint: { reads: [], writes: [], unbounded: true },
+        };
+        if (tool === undefined) return conservative;
+        let footprint: ResourceFootprint;
+        try {
+          // `footprint` is normally derived from validated input; here the args are unvalidated, so a
+          // malformed call could throw. Treat that as unbounded rather than guessing a footprint.
+          footprint = tool.footprint(c.arguments as never);
+        } catch {
+          return conservative;
+        }
+        return {
+          callId: c.callId as never,
+          toolName: c.toolName,
+          annotations: tool.annotations,
+          footprint,
+        };
+      });
+      // Frozen default: 8 (docs/product/defaults.md, "safe read-tool concurrency").
+      const batches = planToolBatches(planned, { maxParallel: 8 });
+      return batches.map((batch) => batch.calls.map((pc) => pc.callId as string));
     },
   };
 }

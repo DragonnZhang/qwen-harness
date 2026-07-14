@@ -123,6 +123,23 @@ export interface ToolExecutor {
     kind: 'file-write' | 'file-edit' | 'patch' | 'shell' | 'git' | 'network' | 'mcp' | 'other';
     normalizedAction: string;
   };
+  /**
+   * Partition a round's calls into ordered execution batches by REAL resource conflict (TL-08).
+   *
+   * The conflict analysis lives in the tools layer (it needs each tool's annotations and argument
+   * footprint), so the engine delegates it here rather than depending on `tools-core`. The return is
+   * groups of `callId`s in ORIGINAL ORDER: each inner group is a set of calls that are safe to run
+   * concurrently (independent read-only calls); groups run strictly in sequence, and any mutating or
+   * conflicting call is its own single-call group. Optional — an executor that omits it (a test fake)
+   * makes the engine fall back to fully serial execution, which is always safe.
+   */
+  planBatches?(
+    calls: readonly {
+      callId: string;
+      toolName: string;
+      arguments: Readonly<Record<string, unknown>>;
+    }[],
+  ): readonly (readonly string[])[];
 }
 
 /** A pending approval: everything a human (or a client over a socket) needs to decide. */
@@ -586,9 +603,66 @@ export class TurnEngine {
     signal: AbortSignal,
     conversation: ModelInputItem[],
   ): Promise<ToolPhase> {
-    const { tools, sink } = this.#deps;
+    // TL-08: run the round's calls in resource-conflict batches. `planBatches` (owned by the tools
+    // layer, which knows each tool's footprint) returns callId groups in ORIGINAL ORDER: a group of
+    // more than one is independent read-only calls safe to run CONCURRENTLY; a mutating or conflicting
+    // call is its own single-call group. An executor without `planBatches` yields one call per group —
+    // fully serial, always safe. Groups always run in sequence, so any ordering the model relied on
+    // between a mutation and a later read is preserved.
+    const byId = new Map(calls.map((c) => [c.callId, c]));
+    const groups: readonly (readonly string[])[] = this.#deps.tools.planBatches
+      ? this.#deps.tools.planBatches(
+          calls.map((c) => ({ callId: c.callId, toolName: c.toolName, arguments: c.arguments })),
+        )
+      : calls.map((c) => [c.callId]);
 
-    for (const call of calls) {
+    for (const group of groups) {
+      const groupCalls = group
+        .map((id) => byId.get(id))
+        .filter((c): c is NormalizedToolCall => c !== undefined);
+      if (groupCalls.length === 1) {
+        const phase = await this.#runOneCall(
+          groupCalls[0]!,
+          base,
+          machine,
+          budget,
+          signal,
+          conversation,
+        );
+        if (phase.stop) return phase;
+      } else if (groupCalls.length > 1) {
+        const phase = await this.#runParallelBatch(
+          groupCalls,
+          base,
+          machine,
+          budget,
+          signal,
+          conversation,
+        );
+        if (phase.stop) return phase;
+      }
+    }
+    return { stop: false };
+  }
+
+  /**
+   * Run ONE tool call through the full ordered flow: budget → PreToolUse hook → policy (deny/ask with
+   * approval/allow) → persist intent → recovery guard → execute → persist result → PostToolUse hook →
+   * durable tool-result → pair the function-output back to the model. This is the serial path used for
+   * every single-call batch (every mutation) and by the fallback. Each early `return { stop: … }`
+   * suspends the whole turn (budget/cancellation/awaiting-approval); a plain `return { stop: false }`
+   * means THIS call is fully handled and the batch driver should continue to the next.
+   */
+  async #runOneCall(
+    call: NormalizedToolCall,
+    base: PersistBase,
+    machine: TurnMachine,
+    budget: BudgetTracker,
+    signal: AbortSignal,
+    conversation: ModelInputItem[],
+  ): Promise<ToolPhase> {
+    const { tools, sink } = this.#deps;
+    {
       if (signal.aborted) return { stop: true, kind: 'cancelled' };
 
       const budgetCheck = budget.beforeToolCall();
@@ -622,7 +696,7 @@ export class TurnEngine {
             name: call.toolName,
             output: `(blocked by a PreToolUse hook${gate.reason ? `: ${gate.reason}` : ''})`,
           });
-          continue;
+          return { stop: false };
         }
       }
 
@@ -653,7 +727,7 @@ export class TurnEngine {
           name: call.toolName,
           output: `(denied by policy: ${verdict.reason})`,
         });
-        continue;
+        return { stop: false };
       }
 
       if (verdict.status === 'ask') {
@@ -722,7 +796,7 @@ export class TurnEngine {
             name: call.toolName,
             output: `(the user denied this action: ${decision.reason}. Do not retry it; adapt or ask.)`,
           });
-          continue;
+          return { stop: false };
         }
       }
 
@@ -762,7 +836,7 @@ export class TurnEngine {
           name: call.toolName,
           output: `(skipped: ${may.reason})`,
         });
-        continue;
+        return { stop: false };
       }
 
       sink.append({
@@ -841,6 +915,211 @@ export class TurnEngine {
       if (signal.aborted) return { stop: true, kind: 'cancelled' };
     }
 
+    return { stop: false };
+  }
+
+  /**
+   * Run a PARALLEL batch — independent read-only calls the scheduler proved safe to run at once
+   * (TL-08). Only the tool EXECUTIONS overlap; every durable append stays in call order (phase 1
+   * records intent for each call in order, phase 3 records each settled result in order), so the
+   * event log is deterministic no matter which execution finishes first and call↔result pairing stays
+   * exact.
+   *
+   * The concurrency fast-path is taken ONLY when every call is a plain policy `allow`. A read a rule
+   * still gates with `ask`, or that policy denies, cannot run in a fire-and-forget batch, so the whole
+   * group falls back to the serial `#runOneCall` path. `evaluate` has no side effect, so the pre-scan
+   * is free; reads are almost always `allow`, so the fast-path is the common case.
+   */
+  async #runParallelBatch(
+    calls: readonly NormalizedToolCall[],
+    base: PersistBase,
+    machine: TurnMachine,
+    budget: BudgetTracker,
+    signal: AbortSignal,
+    conversation: ModelInputItem[],
+  ): Promise<ToolPhase> {
+    const { tools, sink } = this.#deps;
+    void machine;
+
+    // Pre-scan (no side effect): only fast-path a batch that is entirely plain `allow`.
+    const verdicts = await Promise.all(
+      calls.map((c) =>
+        tools.evaluate({ callId: c.callId, toolName: c.toolName, arguments: c.arguments }),
+      ),
+    );
+    if (!verdicts.every((v) => v.status === 'allow')) {
+      for (const call of calls) {
+        const phase = await this.#runOneCall(call, base, machine, budget, signal, conversation);
+        if (phase.stop) return phase;
+      }
+      return { stop: false };
+    }
+
+    // PHASE 1 — in call order: budget, PreToolUse hook, policy-decision, intent, recovery guard, start.
+    const cleared: { call: NormalizedToolCall; sideEffectId: string }[] = [];
+    for (let i = 0; i < calls.length; i++) {
+      const call = calls[i]!;
+      if (signal.aborted) return { stop: true, kind: 'cancelled' };
+
+      const budgetCheck = budget.beforeToolCall();
+      if (budgetCheck.stop) return { stop: true, kind: 'budget', reason: budgetCheck.reason };
+      const repeat = budget.observeToolCall(call.toolName, call.argumentsJson);
+      if (repeat.stop) return { stop: true, kind: 'budget', reason: repeat.reason };
+
+      if (this.#deps.hooks) {
+        const gate = await this.#deps.hooks.preToolUse({
+          toolName: call.toolName,
+          arguments: call.arguments,
+        });
+        sink.append({
+          ...base,
+          payload: {
+            type: 'hook-fired',
+            event: 'PreToolUse',
+            handler: call.toolName,
+            outcome: gate.blocked ? 'block' : 'continue',
+            durationMs: 0,
+          },
+        });
+        if (gate.blocked) {
+          conversation.push({
+            type: 'function-output',
+            callId: call.callId,
+            name: call.toolName,
+            output: `(blocked by a PreToolUse hook${gate.reason ? `: ${gate.reason}` : ''})`,
+          });
+          continue;
+        }
+      }
+
+      const verdict = verdicts[i]!;
+      sink.append({
+        ...base,
+        payload: {
+          type: 'policy-decision',
+          callId: call.callId,
+          normalizedAction: verdict.description,
+          decision: verdict.status,
+          reason: verdict.reason,
+          source: verdict.source,
+        },
+      });
+
+      const intent = tools.intentFor({ toolName: call.toolName, arguments: call.arguments });
+      const sideEffectId = this.#deps.ids.next('sfx');
+      sink.append({
+        ...base,
+        payload: {
+          type: 'side-effect-intent',
+          intent: {
+            sideEffectId: sideEffectId as never,
+            idempotencyKey: intent.idempotencyKey,
+            kind: intent.kind,
+            destructive: intent.destructive,
+            normalizedAction: intent.normalizedAction,
+          },
+        },
+      });
+
+      const may = sink.mayExecute(intent.idempotencyKey);
+      if (!may.allowed) {
+        sink.append({
+          ...base,
+          payload: {
+            type: 'side-effect-settled',
+            sideEffectId: sideEffectId as never,
+            state: 'known-complete',
+            resultDigest: null,
+          },
+        });
+        conversation.push({
+          type: 'function-output',
+          callId: call.callId,
+          name: call.toolName,
+          output: `(skipped: ${may.reason})`,
+        });
+        continue;
+      }
+
+      sink.append({
+        ...base,
+        payload: { type: 'side-effect-started', sideEffectId: sideEffectId as never },
+      });
+      cleared.push({ call, sideEffectId });
+    }
+
+    // PHASE 2 — concurrent: the actual tool I/O overlaps. This is the point of a parallel batch.
+    const results = await Promise.all(
+      cleared.map((x) =>
+        tools.execute({
+          callId: x.call.callId,
+          toolName: x.call.toolName,
+          arguments: x.call.arguments,
+          argumentsJson: x.call.argumentsJson,
+          signal,
+        }),
+      ),
+    );
+
+    // PHASE 3 — in call order: settle, PostToolUse, durable tool-result, pair the output to the model.
+    for (let i = 0; i < cleared.length; i++) {
+      const { call, sideEffectId } = cleared[i]!;
+      const result = results[i]!;
+      sink.append({
+        ...base,
+        payload: {
+          type: 'side-effect-settled',
+          sideEffectId: sideEffectId as never,
+          state: result.ok ? 'known-complete' : 'known-failed',
+          resultDigest: result.resultDigest,
+        },
+      });
+      if (this.#deps.hooks) {
+        await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        sink.append({
+          ...base,
+          payload: {
+            type: 'hook-fired',
+            event: result.ok ? 'PostToolUse' : 'PostToolUseFailure',
+            handler: call.toolName,
+            outcome: 'continue',
+            durationMs: 0,
+          },
+        });
+      }
+      const itemId = this.#deps.ids.next('itm') as ItemId;
+      sink.append({
+        ...base,
+        itemId,
+        payload: {
+          type: 'item-appended',
+          item: {
+            type: 'tool-result',
+            id: itemId,
+            turnId: base.turnId,
+            threadId: base.threadId,
+            seq: 0,
+            createdAt: this.#deps.clock.now(),
+            callId: call.callId,
+            toolName: call.toolName,
+            ok: result.ok,
+            preview: result.modelText,
+            outputRef: result.outputRef,
+            truncated: result.truncated,
+            durationMs: result.durationMs,
+            errorCategory: result.errorCategory,
+          },
+        },
+      });
+      conversation.push({
+        type: 'function-output',
+        callId: call.callId,
+        name: call.toolName,
+        output: result.modelText,
+      });
+    }
+
+    if (signal.aborted) return { stop: true, kind: 'cancelled' };
     return { stop: false };
   }
 

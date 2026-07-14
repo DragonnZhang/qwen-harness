@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **72** |
-| IN_PROGRESS | 83 | 63 |
+| **VERIFIED** | 38 | **73** |
+| IN_PROGRESS | 83 | 62 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -56,11 +56,19 @@ other classes were already real: I (`sandboxed-tools.test.ts` pagination + edit)
 refused with `stale-file`), S (`path-escape`), P-escape (`resolve-scoped.property.test.ts`), E
 (`evals/e2e/coding-loop.test.ts` lands a real `edit_file` on disk).
 
-Separately, an 8th "loaded but not wired" case was FOUND (recorded, not yet fixed): the tool-call
-SCHEDULER (`packages/tools-core/src/scheduler.ts` `planBatches`/`conflicts`) is fully unit-tested but
-NEVER called — the turn engine executes tool calls serially in a `for` loop (`turn-engine.ts:591`).
-So TL-08's parallel/serial batching is not delivered; it needs real wiring plus `I`/`F`, not a
-property test on dead code, and remains IN_PROGRESS honestly.
+An 8th "loaded but not wired" case was found and then FIXED, and **TL-08 is now VERIFIED**. The
+tool-call SCHEDULER (`packages/tools-core/src/scheduler.ts` `planBatches`/`conflicts`) was fully
+unit-tested but NEVER called — the turn engine ran tool calls serially. It is now wired: `ToolExecutor`
+gained an optional `planBatches` (the tools layer owns the footprint/conflict analysis, so the runtime
+delegates rather than depending on `tools-core`), and `TurnEngine.#runToolCalls` runs the returned
+groups — `#runOneCall` for single-call/mutation batches (the serial path, unchanged) and a new
+`#runParallelBatch` that overlaps ONLY the tool executions while recording every durable event in call
+order (phase 1 all intents, phase 3 all results), so the log stays deterministic and call↔result
+pairing exact. Evidence: U (`scheduler.test.ts`), P (`scheduler.property.test.ts` — 1500-run
+order/safety/isolation/width invariants), I (`runtime/test/integration/parallel-batch.test.ts` — a
+barrier proves two reads run concurrently and it stays serial without `planBatches`), F (a failing call
+in a batch leaves siblings correctly paired). A fake executor without `planBatches` keeps the serial
+path, so no existing test changed, and the full `pnpm check` plus all 10 golden paths pass.
 
 **TL-07 (the no-bypass tool pipeline) is now VERIFIED** — its gap was `U`+`P` over the already-wired
 `ToolPipeline.decide`. Added `packages/tools-builtin/src/pipeline.test.ts`: unit tests prove a
@@ -72,7 +80,7 @@ read→edit→shell through the whole chain onto disk), S (the two alternate pat
 `hooks/test/security/hook-escalation.test.ts` a hook cannot flip a policy deny to allow;
 `mcp/test/security/malicious-tool.test.ts` an MCP tool cannot bypass a managed deny).
 
-The remaining 106 rows are still genuinely not verifiable today — a required evidence class is absent
+The remaining 105 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
