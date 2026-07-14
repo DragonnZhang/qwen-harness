@@ -22,6 +22,8 @@ import { DEMO_ITEMS } from './demo.ts';
 import { createLiveTurn } from './live-turn.ts';
 import { LiveApp } from './live.tsx';
 import { createScriptedTurn, type LiveController } from './scripted-turn.ts';
+import { loadSessionRows } from './session-list.ts';
+import { SessionsApp } from './SessionPicker.tsx';
 import { arraySource, emitterSource } from './source.ts';
 import type { StatusModel } from './types.ts';
 
@@ -92,6 +94,17 @@ function selectRoot(mode: StatusModel['mode']): {
   if (process.argv.includes('--scripted-turn')) {
     const controller = createScriptedTurn(mode);
     return { element: <LiveApp controller={controller} />, controller };
+  }
+
+  // SESSION PICKER (UI-10): list this workspace's durable sessions and resume one into a live turn.
+  // The resumed controller is created lazily inside `SessionsApp` on selection, so there is no
+  // top-level controller to dump here — the durable transcript already lives in the event store.
+  if (process.argv.includes('sessions')) {
+    const cwd = process.cwd();
+    return {
+      element: <SessionsApp mode={mode} cwd={cwd} sessions={loadSessionRows(cwd)} />,
+      controller: null,
+    };
   }
 
   // LIVE mode: a real interactive session against qwen3.7-max through the real sandboxed pipeline.

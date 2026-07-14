@@ -273,7 +273,7 @@ Sources: [Claude Code interactive mode](https://code.claude.com/docs/en/interact
 | UI-07 | Ctrl-C interrupts active work; idle first clears and second exits. Esc interrupts work or closes a dialog; double Esc clears a draft into history or opens rewind. Steering applies at a documented safe boundary. | U,I,F,T,E | REQUIRED |
 | UI-08 | Background, task graph, agent/team, Cron, worktree, MCP, hook, memory, and session views support list, inspect, filter, open, and every domain action specified by its matrix rows. | U,T,E | REQUIRED |
 | UI-09 | Transcript viewer supports expand/collapse, search, copy/export, external pager/editor, and tool detail without binding consumers to internal event storage. | U,T,E | IN_PROGRESS |
-| UI-10 | Session picker and commands support create, resume, continue, branch/fork, rename, export, archive, delete, clear, compact, and context inspection. | U,T,E | REQUIRED |
+| UI-10 | Session picker and commands support create, resume, continue, branch/fork, rename, export, archive, delete, clear, compact, and context inspection. | U,T,E | VERIFIED |
 | UI-11 | Classic scrollback renderer is production-ready; an optional fullscreen renderer may be added only after equivalent selection, resize, mouse/scroll, auto-follow, and restoration tests pass. | U,P,T,E | REQUIRED |
 | UI-12 | Status line can show cwd/worktree, Git, model, mode, context, usage/cost, duration, rate/backoff, background count, team state, and cache without leaking secrets. | U,S,T | REQUIRED |
 | UI-13 | Resize from narrow to large terminals, suspend/resume, SSH disconnect, signal exit, uncaught error, child PTY, and normal exit always restore cursor, raw mode, echo, and screen state. | P,I,F,T | REQUIRED |

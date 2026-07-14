@@ -49,7 +49,7 @@ import { EventStore } from '@qwen-harness/storage';
 
 import type { ApprovalPrompt, StatusModel } from './types.ts';
 import type { LiveController, LiveView } from './scripted-turn.ts';
-import { emitterSource } from './source.ts';
+import { emitterSource, type MutableSource } from './source.ts';
 
 const MODEL = 'qwen3.7-max';
 const INSTRUCTIONS =
@@ -91,6 +91,48 @@ function teeProvider(
 export interface LiveTurnOptions {
   readonly mode: StatusModel['mode'];
   readonly cwd: string;
+  /**
+   * Resume an EXISTING durable thread instead of starting a fresh one (UI-10). When set, no
+   * `thread-created` is appended; the thread's persisted transcript is re-projected into the source
+   * so the picker's selection re-renders exactly what prior turns produced, and the next submit
+   * continues the SAME conversation via `reconstructHistory`.
+   */
+  readonly resume?: { readonly threadId: ThreadId } | undefined;
+}
+
+/**
+ * Re-project a thread's DURABLE transcript into the live source for display on resume (UI-10).
+ *
+ * This reads the event log the same way {@link reconstructHistory} does, but it produces UI ITEMS
+ * (what the transcript renders) rather than model-input history. User text lives on `turn-started`,
+ * not as an item, so it is minted into a fresh `user-message` item; every persisted `item-appended`
+ * (assistant text, tool calls, tool results, usage, …) is replayed verbatim. Each item still crosses
+ * `tui-kit`'s `SafeText` boundary when the transcript is built, exactly as a live item does.
+ */
+function projectDurableTranscript(
+  store: EventStore,
+  threadId: ThreadId,
+  source: MutableSource,
+  ids: { next(prefix: string): string },
+): void {
+  for (const event of store.readThread(threadId)) {
+    const p = event.payload;
+    if (p.type === 'turn-started') {
+      source.push(
+        ItemSchema.parse({
+          id: ids.next('itm'),
+          turnId: event.turnId ?? (threadId.replace('thr', 'trn') as TurnId),
+          threadId,
+          seq: event.seq,
+          createdAt: event.timestamp,
+          type: 'user-message',
+          text: p.userText,
+        }),
+      );
+    } else if (p.type === 'item-appended') {
+      source.push(p.item);
+    }
+  }
 }
 
 /**
@@ -142,15 +184,20 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
     for (const listener of listeners) listener();
   };
 
-  const threadId = ids.next('thr') as ThreadId;
+  const resumeThreadId = opts.resume?.threadId ?? null;
+  const threadId = resumeThreadId ?? (ids.next('thr') as ThreadId);
   const turnIdSeed = threadId.replace('thr', 'trn') as TurnId;
-  store.append({
-    threadId,
-    correlationId: ids.next('cor') as CorrelationId,
-    permissionProfile: authority.profile,
-    actor: { kind: 'user', id: 'act_user01' as never },
-    payload: { type: 'thread-created', cwd, canonicalRepo: cwd, name: null },
-  });
+  if (resumeThreadId === null) {
+    store.append({
+      threadId,
+      correlationId: ids.next('cor') as CorrelationId,
+      permissionProfile: authority.profile,
+      actor: { kind: 'user', id: 'act_user01' as never },
+      payload: { type: 'thread-created', cwd, canonicalRepo: cwd, name: null },
+    });
+  } else {
+    projectDurableTranscript(store, threadId, source, ids);
+  }
 
   let running = false;
   let abort: AbortController | null = null;
