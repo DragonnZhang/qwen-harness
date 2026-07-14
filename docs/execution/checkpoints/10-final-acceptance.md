@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **71** |
-| IN_PROGRESS | 83 | 64 |
+| **VERIFIED** | 38 | **72** |
+| IN_PROGRESS | 83 | 63 |
 | REQUIRED | 57 | 43 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -62,7 +62,17 @@ NEVER called — the turn engine executes tool calls serially in a `for` loop (`
 So TL-08's parallel/serial batching is not delivered; it needs real wiring plus `I`/`F`, not a
 property test on dead code, and remains IN_PROGRESS honestly.
 
-The remaining 107 rows are still genuinely not verifiable today — a required evidence class is absent
+**TL-07 (the no-bypass tool pipeline) is now VERIFIED** — its gap was `U`+`P` over the already-wired
+`ToolPipeline.decide`. Added `packages/tools-builtin/src/pipeline.test.ts`: unit tests prove a
+schema-invalid or unknown-tool call is rejected BEFORE the policy engine (a spy) is ever consulted,
+and that deny/ask/allow verdicts surface as denied/needs-approval/approved with the approved action
+built from the VALIDATED arguments; a 1500-run property asserts policy is consulted IFF validation
+passed — no bypass in either direction. Its other classes were real: I (`cli-run.test.ts` drives
+read→edit→shell through the whole chain onto disk), S (the two alternate paths are both gated —
+`hooks/test/security/hook-escalation.test.ts` a hook cannot flip a policy deny to allow;
+`mcp/test/security/malicious-tool.test.ts` an MCP tool cannot bypass a managed deny).
+
+The remaining 106 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
