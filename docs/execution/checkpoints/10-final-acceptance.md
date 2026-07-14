@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **82** |
-| IN_PROGRESS | 83 | 55 |
+| **VERIFIED** | 38 | **83** |
+| IN_PROGRESS | 83 | 54 |
 | REQUIRED | 57 | 41 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -159,7 +159,15 @@ from frontmatter alone, then `run --skill` loads the skill BODY and feeds it to 
 two levels; an invalid skill is reported). U/S were already real (`catalog.test.ts`/`registry.test.ts`/
 `frontmatter.test.ts`, `untrusted-skill.test.ts`).
 
-The remaining 96 rows are still genuinely not verifiable today — a required evidence class is absent
+**PS-07 (config provenance + doctor explains every winning value) is now VERIFIED** — its only gap was
+`I`: `doctor` had zero tests. Added `apps/cli/test/integration/doctor.test.ts` — `main(['doctor'])`
+reports each winning config value WITH the scope it came from (a project-overridden `model` is
+attributed to that scope; an un-overridden value to `builtin`), plus the platform/sandbox/config
+sections. The other classes were already real: U + P (`config/src/resolve.test.ts` — provenance,
+builtin fallback, and a combinatorial scope-winner boundary test over many scope combinations), S
+(`managed-ceiling.test.ts` — a deny from a lower scope survives), D (`configuration.md`/`permissions.md`).
+
+The remaining 95 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
