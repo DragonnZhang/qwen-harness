@@ -304,10 +304,22 @@ describe('isSafeLinkTarget admits only http/https/mailto (TL-13, TL-14) [P]', ()
     );
   });
 
-  it('accepts arbitrary mailto: targets', () => {
+  it('admits a mailto: target exactly when it is a parseable URL', () => {
+    // `fc.emailAddress()` yields RFC-valid emails whose local part may begin with `//` (e.g.
+    // `"//x"@host`); prefixed with `mailto:` that reads as a URL authority and does NOT parse, and
+    // such a target is correctly not rendered as a link. So the property is scheme admission tied to
+    // parseability — a parseable mailto is admitted, a non-parseable one is not — never a blanket
+    // "every email is a safe link", which was a flaky over-claim.
     fc.assert(
       fc.property(fc.emailAddress(), (email) => {
-        expect(isSafeLinkTarget(`mailto:${email}`)).toBe(true);
+        const target = `mailto:${email}`;
+        let parseable = true;
+        try {
+          new URL(target);
+        } catch {
+          parseable = false;
+        }
+        expect(isSafeLinkTarget(target)).toBe(parseable);
       }),
       { numRuns: 300 },
     );

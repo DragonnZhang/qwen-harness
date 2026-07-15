@@ -217,6 +217,22 @@ sibling, and an unrelated repo does NOT see it — sharing is scoped to the cano
 machine); D (`docs/guide/cli.md` — the five-scope table and a runnable main-worktree→linked-worktree
 example). The full `pnpm check` passes with this fix.
 
+**CX-01 (context budgets) — P added; a 13th loaded-but-not-wired gap found, T still open.** The budget
+math is now a property (`packages/context/src/budget.property.test.ts`): across any window / reserve /
+overhead / transcript, the reserve+usable split is exact against the window, `available` is never
+negative, utilization is exactly used/usable, overflow implies over-threshold, and adding content
+never lowers utilization — plus `estimateItems` is deterministic and non-zero for any non-empty
+transcript. That gives CX-01 a genuine **U** (`apps/cli/test/unit/context.test.ts`), **P** (new), and
+**I** (`apps/cli/test/integration/compaction.test.ts`). It is NOT yet flipped, because the **T** class
+is genuinely unmet AND exposes a real defect: `StatusModel.contextTokens` is set to `null` in every
+turn model (`live-turn.ts:202`, `scripted-turn.ts:400`, `bin.tsx:49`) and NEVER computed from the
+transcript, so `StatusLine`'s `{contextTokens} ctx` indicator (StatusLine.tsx:42-45) is dead code —
+the TUI never actually exposes utilization. Verifying CX-01's T requires FIRST wiring the computed
+utilization (`computeBudget`/`estimateItems` over the current transcript, against the provider's
+declared window) into the status model, then a PTY frame test asserting the indicator renders. That
+wiring lives in the TUI streaming path and is deferred rather than rushed, to respect the repo's flake
+policy (no retry-to-pass). Recorded here so it is not lost. CX-01 stays IN_PROGRESS, honestly.
+
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
 `packages/teams/src/protocol-messages.test.ts`: every one of the 15 required message types parses, the
