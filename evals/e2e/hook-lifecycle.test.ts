@@ -61,6 +61,11 @@ describe('SessionStart and PostToolBatch fire on a real run (HK-01)', () => {
             event: 'PermissionDenied',
             handler: { type: 'command', command: script('denied') },
           },
+          {
+            id: 'on-setup',
+            event: 'Setup',
+            handler: { type: 'command', command: script('setup') },
+          },
         ],
       }),
     );
@@ -150,5 +155,32 @@ describe('SessionStart and PostToolBatch fire on a real run (HK-01)', () => {
   it('fires PermissionDenied when a plan-profile tool is refused', async () => {
     await main(runShell('plan')); // shell under `plan` → hard policy deny
     expect(existsSync(marker('denied')), 'PermissionDenied hook fired').toBe(true);
+  });
+
+  it('fires Setup only on the FIRST run in a workspace', async () => {
+    const textDeps = (): CliDeps => ({
+      argv: ['run', '--profile', 'yolo', 'hello'],
+      env: {},
+      cwd,
+      now: () => 1_700_000_000_000,
+      stdout: () => {},
+      stderr: () => {},
+      provider: {
+        capabilities: CAPS,
+        async *stream() {
+          yield { type: 'text-done', itemId: 'it_1', text: 'ok' };
+          yield { type: 'done', finishReason: 'stop' };
+        },
+      },
+    });
+
+    // First run: no session store yet → Setup fires.
+    await main(textDeps());
+    expect(existsSync(marker('setup')), 'Setup fired on first run').toBe(true);
+
+    // Delete the marker and run again: the store now exists, so Setup does NOT fire a second time.
+    rmSync(marker('setup'));
+    await main(textDeps());
+    expect(existsSync(marker('setup')), 'Setup did not re-fire on the second run').toBe(false);
   });
 });

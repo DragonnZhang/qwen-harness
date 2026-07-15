@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -350,8 +350,11 @@ async function runCommand(
   // State lives under the workspace so a run is self-contained and inspectable.
   const stateDir = join(deps.cwd, '.qwen-harness');
   mkdirSync(stateDir, { recursive: true });
+  const sessionsPath = join(stateDir, 'sessions.sqlite');
+  // No session store yet → this is the first run in this workspace, which fires `Setup` below (HK-01).
+  const firstRun = !existsSync(sessionsPath);
   const store = new EventStore({
-    path: join(stateDir, 'sessions.sqlite'),
+    path: sessionsPath,
     clock: { now: deps.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) },
     ids: realIds,
     // The redactor needs the credential VALUE to scrub it out of anything we persist. We do not
@@ -471,6 +474,12 @@ async function runCommand(
           },
         }),
     });
+
+    // The very first run in this workspace fires Setup once (HK-01) — a hook can do one-time
+    // provisioning before anything else happens.
+    if (firstRun && hooks !== null) {
+      await hooks.fire('Setup', { data: { workspace: deps.cwd } });
+    }
 
     // --- repository instructions (IN-06) ------------------------------------------------------
     const guidance = loadGuidance({ workspaceRoot: deps.cwd, homeDir });
