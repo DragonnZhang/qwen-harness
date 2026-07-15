@@ -50,6 +50,7 @@ import { EventStore } from '@qwen-harness/storage';
 
 import type { ApprovalPrompt, StatusModel } from './types.ts';
 import { nextProfile, type LiveController, type LiveView } from './scripted-turn.ts';
+import { estimateContextTokens } from './context-estimate.ts';
 import { emitterSource, type MutableSource } from './source.ts';
 
 const MODEL = 'qwen3.7-max';
@@ -199,7 +200,8 @@ export function createLiveTurn(opts: LiveTurnOptions): LiveController {
     model: sanitize(authority.config.model.value, { origin: 'user', multiline: false }).text,
     mode: authority.profile,
     activity,
-    contextTokens: null,
+    // Live utilization from the current transcript (CX-01) — hidden until there is context.
+    contextTokens: estimateContextTokens(source.getItems()),
   });
 
   let view: LiveView = { status: baseStatus('idle'), approval: null };

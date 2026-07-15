@@ -165,7 +165,7 @@ Sources: [s08](https://learn.shareai.run/en/s08/), [s09](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| CX-01 | Context budgets use provider capability and measured serialized size/token estimates, reserve response/tool headroom, and expose current utilization. | U,P,I,T | IN_PROGRESS |
+| CX-01 | Context budgets use provider capability and measured serialized size/token estimates, reserve response/tool headroom, and expose current utilization. | U,P,I,T | VERIFIED |
 | CX-02 | Cheap reduction runs first: offload large results, prune only safe middle content, and replace old tool results while retaining call/result pairing and durable references. | U,P,I,F | VERIFIED |
 | CX-03 | Threshold compaction writes the full transcript boundary, creates a structured summary, and preserves user goal, constraints, plan, todos/tasks, active files, decisions, errors, and unfinished obligations. | U,I,F,E,L | VERIFIED |
 | CX-04 | Proactive compaction and reactive overflow compaction are distinct, bounded, observable paths with pre/post hooks and retry circuit breakers. | U,P,I,F,L | VERIFIED |

@@ -131,6 +131,12 @@ describe('golden path 8 — a real task through the compiled TUI over a PTY', ()
     //    (unique to round two) and let the turn settle back to idle before driving the next turn.
     await app.waitFor((o) => o.includes('total 424'), 15_000, 'second round usage');
     expect(app.output).toContain('All tests pass');
+
+    // CX-01: the status line EXPOSES current context utilization. With a real transcript in place, the
+    // `<n> ctx` indicator renders — it was previously dead code (contextTokens was always null, so the
+    // StatusLine branch never fired). This is the frame proof that utilization is actually surfaced.
+    await app.waitFor((o) => /\d+ ctx/.test(o), 10_000, 'context utilization indicator (CX-01)');
+
     await delay(500);
 
     // 9. A second turn starts long-running work; while it is BUSY, Ctrl-C must INTERRUPT the turn

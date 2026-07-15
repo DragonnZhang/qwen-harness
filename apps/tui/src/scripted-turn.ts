@@ -49,6 +49,7 @@ import {
   type ToolExecutor,
 } from '@qwen-harness/runtime';
 
+import { estimateContextTokens } from './context-estimate.ts';
 import type { RuntimeSource } from './source.ts';
 import { emitterSource } from './source.ts';
 import type { ApprovalDecision, ApprovalPrompt, StatusModel } from './types.ts';
@@ -397,7 +398,8 @@ export function createScriptedTurn(mode: StatusModel['mode']): LiveController {
     model: sanitize(MODEL, { origin: 'user', multiline: false }).text,
     mode: currentMode,
     activity,
-    contextTokens: null,
+    // Live utilization from the accumulated transcript (CX-01) — hidden until there is context.
+    contextTokens: estimateContextTokens(sink.durable),
   });
 
   let view: LiveView = { status: baseStatus('idle'), approval: null };

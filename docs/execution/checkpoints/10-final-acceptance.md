@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **93** |
-| IN_PROGRESS | 83 | 46 |
+| **VERIFIED** | 38 | **94** |
+| IN_PROGRESS | 83 | 45 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -217,21 +217,23 @@ sibling, and an unrelated repo does NOT see it — sharing is scoped to the cano
 machine); D (`docs/guide/cli.md` — the five-scope table and a runnable main-worktree→linked-worktree
 example). The full `pnpm check` passes with this fix.
 
-**CX-01 (context budgets) — P added; a 13th loaded-but-not-wired gap found, T still open.** The budget
-math is now a property (`packages/context/src/budget.property.test.ts`): across any window / reserve /
-overhead / transcript, the reserve+usable split is exact against the window, `available` is never
-negative, utilization is exactly used/usable, overflow implies over-threshold, and adding content
-never lowers utilization — plus `estimateItems` is deterministic and non-zero for any non-empty
-transcript. That gives CX-01 a genuine **U** (`apps/cli/test/unit/context.test.ts`), **P** (new), and
-**I** (`apps/cli/test/integration/compaction.test.ts`). It is NOT yet flipped, because the **T** class
-is genuinely unmet AND exposes a real defect: `StatusModel.contextTokens` is set to `null` in every
-turn model (`live-turn.ts:202`, `scripted-turn.ts:400`, `bin.tsx:49`) and NEVER computed from the
-transcript, so `StatusLine`'s `{contextTokens} ctx` indicator (StatusLine.tsx:42-45) is dead code —
-the TUI never actually exposes utilization. Verifying CX-01's T requires FIRST wiring the computed
-utilization (`computeBudget`/`estimateItems` over the current transcript, against the provider's
-declared window) into the status model, then a PTY frame test asserting the indicator renders. That
-wiring lives in the TUI streaming path and is deferred rather than rushed, to respect the repo's flake
-policy (no retry-to-pass). Recorded here so it is not lost. CX-01 stays IN_PROGRESS, honestly.
+**CX-01 (context budgets) is now VERIFIED — a 13th loaded-but-not-wired gap, found and FIXED.**
+`StatusModel.contextTokens` was set to `null` in every turn model (`live-turn.ts`, `scripted-turn.ts`,
+`bin.tsx`) and NEVER computed from the transcript, so `StatusLine`'s `{contextTokens} ctx` indicator
+(StatusLine.tsx:42-45) was dead code — the TUI never actually exposed utilization, even though
+`computeBudget` had all the math. Fixed: a shared `estimateContextTokens(transcript)` (new
+`apps/tui/src/context-estimate.ts`) returns the measured serialized-size token estimate (null before
+there is any context, so the indicator stays hidden), and both the live and scripted turn models now
+populate `contextTokens` from the current transcript. Evidence, all genuine: U
+(`apps/cli/test/unit/context.test.ts` for utilization + `apps/tui/test/unit/context-estimate.test.ts`
+for the estimator — null when empty, positive and deterministic otherwise, monotonic as the transcript
+grows); P (`packages/context/src/budget.property.test.ts` — across any window / reserve / overhead /
+transcript, the reserve+usable split is exact, `available` never negative, utilization = used/usable,
+overflow implies over-threshold, adding content never lowers utilization, `estimateItems`
+deterministic); I (`apps/cli/test/integration/compaction.test.ts` — real TurnEngine compaction path);
+T (`apps/tui/test/pty/golden-path-8.test.ts` — the compiled TUI over a real PTY: once a transcript
+exists the `<n> ctx` utilization indicator renders in the frame, the previously-dead branch now live).
+The full `pnpm check` passes with this fix.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
