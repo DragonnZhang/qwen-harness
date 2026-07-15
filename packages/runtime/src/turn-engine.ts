@@ -754,6 +754,10 @@ export class TurnEngine {
       if (verdict.status === 'deny') {
         // Hard deny. The model is told, in band, so it can adapt rather than die.
         this.#recordToolDenial(base, call, `denied by policy: ${verdict.reason}`, 'policy-denied');
+        await this.#deps.hooks?.fireLifecycle?.('PermissionDenied', {
+          toolName: call.toolName,
+          reason: verdict.reason,
+        });
         conversation.push({
           type: 'function-output',
           callId: call.callId,
@@ -788,6 +792,10 @@ export class TurnEngine {
             normalizedAction: verdict.description,
             risk: verdict.risk,
           },
+        });
+        await this.#deps.hooks?.fireLifecycle?.('PermissionRequest', {
+          toolName: call.toolName,
+          risk: verdict.risk,
         });
 
         const decision = this.#deps.approvals

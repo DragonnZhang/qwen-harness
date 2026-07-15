@@ -51,6 +51,16 @@ describe('SessionStart and PostToolBatch fire on a real run (HK-01)', () => {
             event: 'PostToolBatch',
             handler: { type: 'command', command: script('batch') },
           },
+          {
+            id: 'on-request',
+            event: 'PermissionRequest',
+            handler: { type: 'command', command: script('request') },
+          },
+          {
+            id: 'on-denied',
+            event: 'PermissionDenied',
+            handler: { type: 'command', command: script('denied') },
+          },
         ],
       }),
     );
@@ -104,5 +114,41 @@ describe('SessionStart and PostToolBatch fire on a real run (HK-01)', () => {
 
     expect(existsSync(marker('start')), 'SessionStart hook fired').toBe(true);
     expect(existsSync(marker('batch')), 'PostToolBatch hook fired').toBe(true);
+  });
+
+  const shellProvider = (): ModelProvider => ({
+    capabilities: CAPS,
+    async *stream() {
+      const args = { command: '/usr/bin/env', argv: ['node', '-e', '0'], cwd: '.' };
+      yield {
+        type: 'tool-call-complete',
+        itemId: 'it_1',
+        callId: 'call_1',
+        toolName: 'run_shell',
+        argumentsJson: JSON.stringify(args),
+        arguments: args,
+      };
+      yield { type: 'done', finishReason: 'tool_calls' };
+    },
+  });
+
+  const runShell = (profile: string): CliDeps => ({
+    argv: ['run', '--json', '--profile', profile, 'run a shell'],
+    env: {},
+    cwd,
+    now: () => 1_700_000_000_000,
+    stdout: () => {},
+    stderr: () => {},
+    provider: shellProvider(),
+  });
+
+  it('fires PermissionRequest when an ask-profile tool needs approval', async () => {
+    await main(runShell('ask')); // shell under `ask` → approval requested (then suspends)
+    expect(existsSync(marker('request')), 'PermissionRequest hook fired').toBe(true);
+  });
+
+  it('fires PermissionDenied when a plan-profile tool is refused', async () => {
+    await main(runShell('plan')); // shell under `plan` → hard policy deny
+    expect(existsSync(marker('denied')), 'PermissionDenied hook fired').toBe(true);
   });
 });
