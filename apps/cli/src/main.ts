@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { PolicyEngine, type Grant } from '@qwen-harness/policy';
 import {
@@ -813,12 +814,14 @@ async function inspectCommand(
 
   if (command === 'memory') {
     const redactor = createRedactor([credential(deps) ?? undefined]);
+    const canonicalRepoRoot = canonicalRepoRootOf(deps.cwd);
     const memory = createMemorySurface({
       workspaceRoot: deps.cwd,
       homeDir,
       env: deps.env,
       clock,
       redactor,
+      ...(canonicalRepoRoot ? { canonicalRepoRoot } : {}),
     });
 
     if (positional[0] === 'add') {
@@ -1733,6 +1736,27 @@ async function teamCommand(deps: CliDeps, args: readonly string[]): Promise<numb
     return 2;
   } finally {
     store.close();
+  }
+}
+
+/**
+ * The canonical repository root of `cwd` — the MAIN worktree, so every linked worktree of one repo
+ * keys to the same `auto` memory store (MM-05). Git reports the shared common dir (`<main>/.git`) even
+ * from a linked worktree; the canonical root is its parent. Returns undefined outside a repo (or on any
+ * git failure), where the caller falls back to the workspace root as its own canonical root.
+ */
+function canonicalRepoRootOf(cwd: string): string | undefined {
+  try {
+    const commonDir = execFileSync(
+      'git',
+      ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    // Only the standard `<root>/.git` layout yields a canonical root by taking the parent; a bare repo
+    // or unusual gitdir is left to the workspace-root fallback rather than guessed at.
+    return commonDir && basename(commonDir) === '.git' ? dirname(commonDir) : undefined;
+  } catch {
+    return undefined;
   }
 }
 

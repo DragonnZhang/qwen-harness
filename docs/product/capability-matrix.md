@@ -175,7 +175,7 @@ Sources: [s08](https://learn.shareai.run/en/s08/), [s09](https://learn.shareai.r
 | MM-02 | Retrieval uses name/description side-selection with deterministic keyword fallback, provenance, per-file/session budgets, and failure isolation. | U,P,I,F,E | VERIFIED |
 | MM-03 | After a naturally completed non-cancelled turn, deterministic eligibility may run extraction; a valid empty result is a no-op. Stored memories are deduplicated and never contain secrets, raw private reasoning, transient noise, or unsupported claims. | U,P,I,S,L | IN_PROGRESS |
 | MM-04 | Consolidation/Dream deduplicates, resolves conflicts with provenance, retires stale content, rebuilds index, and uses the exact eligibility, lock lease, frequency, wall-time, and token gates in defaults. | U,P,I,F,E | VERIFIED |
-| MM-05 | Distinguish cross-session project/user memory, machine-local auto memory shared by worktrees of one canonical repo, team-shared memory, and session memory that survives compaction only. | U,I,E,D | IN_PROGRESS |
+| MM-05 | Distinguish cross-session project/user memory, machine-local auto memory shared by worktrees of one canonical repo, team-shared memory, and session memory that survives compaction only. | U,I,E,D | VERIFIED |
 | MM-06 | Concurrent memory writers use locks/transactions; lock timeout and crash recovery preserve valid previous state. | P,I,F | VERIFIED |
 
 ## I. Error recovery and budgets

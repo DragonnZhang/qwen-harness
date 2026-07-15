@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **92** |
-| IN_PROGRESS | 83 | 47 |
+| **VERIFIED** | 38 | **93** |
+| IN_PROGRESS | 83 | 46 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -198,6 +198,24 @@ model-call-limit, time-limit, retry-limit); F (`packages/runtime/test/integratio
 attempt budget); E (`evals/e2e/termination.test.ts` — a real `main()` turn scripted into an
 identical-call loop terminates with `repeated-identical-calls`, surfaced through the headless JSON,
 and the reason parses against the enum). The full `pnpm check` passes with this fix.
+
+**MM-05 (memory scope distinctions) is now VERIFIED — a 12th loaded-but-not-wired gap, fixed.** The
+memory PACKAGE keys `auto` memory by the canonical repository (`resolveMemoryDir` honours
+`canonicalRepoRoot`), and the unit test proved it — but `createMemorySurface` hardcoded
+`canonicalRepoRoot: opts.workspaceRoot`, with a comment admitting that is only right for a
+"non-worktree checkout". No CLI client ever computed the real canonical root, so the headline MM-05
+distinction — "a lesson learned in one worktree is available in its siblings" — was NOT delivered end
+to end: two worktrees of one repo got two separate auto stores. Fixed: `createMemorySurface` now takes
+an optional `canonicalRepoRoot`, and the CLI computes it from git (`rev-parse --path-format=absolute
+--git-common-dir`, whose shared common dir is identical from every linked worktree; the canonical root
+is its parent), falling back to the workspace root outside a repo. Evidence, all genuine: U
+(`packages/memory/src/scopes.test.ts` — five frozen scopes, session has no directory, project/team in
+distinct trees, auto keyed by canonical repo); I (`packages/memory/test/integration/store.test.ts` —
+real-file read/write/list with provenance); E (`evals/e2e/memory-scopes.test.ts` — through the REAL
+CLI over a real `git worktree`: an `auto` memory added from the MAIN worktree is listed from a LINKED
+sibling, and an unrelated repo does NOT see it — sharing is scoped to the canonical repo, not the
+machine); D (`docs/guide/cli.md` — the five-scope table and a runnable main-worktree→linked-worktree
+example). The full `pnpm check` passes with this fix.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

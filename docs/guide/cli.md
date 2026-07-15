@@ -174,11 +174,36 @@ qwen-harness run --skill review-pr "check my diff" # loads the skill body and pr
 ```sh
 qwen-harness memory                                       # list stored memories with provenance
 qwen-harness memory add --name pnpm-usage --description "Build/test with pnpm" "Run pnpm build then test."
+qwen-harness memory add --name build-lesson --description "CI note" --scope auto "use pnpm, never npm"
 qwen-harness memory consolidate                           # dedup + conflict-resolve, delete superseded files
 ```
 
 Retrieval is automatic and budgeted (5 files / 50 KiB per turn, MM-02); `consolidate` keeps the newer
 of any same-named pair and removes the loser (MM-04). A memory containing a secret is refused (MM-03).
+
+**Scopes (MM-05).** `--scope` selects where a memory lives; a plain CLI run reads and writes three of
+the five frozen scopes:
+
+| Scope | Where it lives | Shared with |
+| --- | --- | --- |
+| `project` | `<repo>/.qwen-harness/memory` | everyone who clones the repo |
+| `user` | `$XDG_DATA_HOME/qwen-harness/memory` | you, across every repo |
+| `auto` | `$XDG_STATE_HOME/qwen-harness/auto/<canonical-repo>` | **every `git worktree` of one repo** |
+| `team` | `<repo>/.qwen-harness/team-memory` | a configured team (not a plain CLI run) |
+| `session` | *(nothing on disk)* | the current run only — survives compaction, never persisted |
+
+The load-bearing distinction is `auto`: it is keyed by the **canonical repository** (the shared git
+common dir), so a lesson recorded in one worktree is visible from its siblings. Prove it end to end —
+write from the main worktree, read from a linked one:
+
+```sh
+git worktree add ../wt-feature                            # a linked worktree of this repo
+qwen-harness memory add --name build-lesson --description "CI note" --scope auto "use pnpm, never npm"
+( cd ../wt-feature && qwen-harness memory --json )        # the sibling worktree lists build-lesson
+```
+
+An unrelated repository resolves to a different canonical key and does **not** see it — the sharing is
+scoped to the repo, not the machine.
 
 ### `trace` — the local telemetry trace
 

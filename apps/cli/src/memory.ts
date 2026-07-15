@@ -46,6 +46,12 @@ export interface MemorySurfaceOptions {
   readonly env: Env;
   readonly clock: Clock;
   readonly redactor: Redactor;
+  /**
+   * The CANONICAL repository root — the main worktree of this checkout. Every linked worktree of one
+   * repo resolves to the same value, which is what makes `auto` memory shared across worktrees (MM-05).
+   * Omitted for a plain, non-worktree checkout, where the workspace root IS the canonical root.
+   */
+  readonly canonicalRepoRoot?: string;
 }
 
 export interface MemorySurface {
@@ -85,8 +91,9 @@ export function createMemorySurface(opts: MemorySurfaceOptions): MemorySurface {
     resolveMemoryDir(scope, {
       projectRoot: opts.workspaceRoot,
       // Auto memory is keyed by the CANONICAL repository, so every worktree of one repo shares it
-      // (MM-05). The workspace root is the canonical root for a plain, non-worktree checkout.
-      canonicalRepoRoot: opts.workspaceRoot,
+      // (MM-05). A linked worktree's canonical root is its MAIN worktree (computed from git by the
+      // caller); a plain checkout has none, and the workspace root is its own canonical root.
+      canonicalRepoRoot: opts.canonicalRepoRoot ?? opts.workspaceRoot,
       homeDir: opts.homeDir,
       env: opts.env,
     });
