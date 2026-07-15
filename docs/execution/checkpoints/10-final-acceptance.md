@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **90** |
-| IN_PROGRESS | 83 | 49 |
+| **VERIFIED** | 38 | **91** |
+| IN_PROGRESS | 83 | 48 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -159,6 +159,25 @@ post-tool stop-without-corruption 224, throwing/timeout hook surfaced 156-174); 
 tool marker IS written and the durable tool-result IS present, a `hook-fired`/`stop` is recorded, and
 the round-2 tripwire text never lands); E (`evals/e2e/hooks.test.ts` — the full `main()` flow with a
 real hook process asks the model exactly once). The full `pnpm check` passes with this fix.
+
+**UI-15 (headless CLI) is now VERIFIED — and an 11th loaded-but-not-wired defect was fixed on the
+way.** `--quiet` and `--no-color` were both accepted into `BOOLEAN_FLAGS` but consumed NOWHERE: a
+machine caller passing `--quiet` still got the full status/notes chrome — a false-assurance inert
+flag. `--quiet` is now genuinely wired: it suppresses the informational stderr chrome (the trailing
+`[state: reason] session` status line, the recovery and MCP-degradation notes, the awaiting-approval
+"how to resume" decoration) while NEVER suppressing the actual result on stdout or a genuine error —
+quiet is not silence. `--no-color` is honest too: the headless path emits only plain strings (model
+and tool text cross the `UntrustedText` sanitizer), so it is a plain-output guarantee, and the E
+asserts no ESC control sequence ever reaches a headless stream. Evidence, all genuine: U
+(`apps/cli/test/unit/parse-flags.test.ts` — the argv contract: boolean flags never swallow the next
+token, value flags consume exactly one, `--k=v` is unambiguous, positionals preserved — the exported
+`parseFlags`); I (`apps/cli/test/integration/cli-run.test.ts` — real `main()` argv `run --json
+--profile yolo` over the REAL bubblewrap sandbox: a real `edit_file` lands `a * b` on disk, stdout is
+one structured `{state:'completed'}` object, exit code 0); E (`evals/e2e/headless.test.ts` — the full
+contract via `main()`: one structured JSON line + exit 0 on completion; an approval-requiring tool
+SUSPENDS and is surfaced in JSON with exit code 3, never blocking; `--quiet` strips the status line
+but keeps the result; output is ANSI-free; `resume <id> <prompt>` continues the SAME durable session).
+The full `pnpm check` passes with this fix.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

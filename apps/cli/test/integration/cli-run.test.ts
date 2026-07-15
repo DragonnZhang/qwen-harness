@@ -11,6 +11,7 @@ import { CANARY_API_KEY, SequentialIds } from '@qwen-harness/testkit';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { authorityForProfile, createHarnessRuntime, runDoctor } from '../../src/index.ts';
+import { main, type CliDeps } from '../../src/main.ts';
 
 /**
  * The CLI composition, driven by a SCRIPTED provider so the coding loop is deterministic, but with
@@ -165,6 +166,58 @@ describe('CLI headless coding loop (deterministic, real sandbox)', () => {
       .map((e) => e.payload)
       .filter((p) => p.type === 'item-appended');
     expect(toolResults.length).toBeGreaterThan(0);
+  });
+});
+
+describe('headless CLI argv → JSON → exit code, over the real sandbox (UI-15)', () => {
+  let workspace: string;
+
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'qh-headless-i-'));
+    writeFileSync(join(workspace, 'math.mjs'), 'export const multiply = (a, b) => a + b;\n');
+  });
+  afterEach(() => rmSync(workspace, { recursive: true, force: true }));
+
+  it('runs a real tool through `main --json` and returns a structured result with exit 0', async () => {
+    if (!available) return; // real bubblewrap sandbox required; asserted present above
+    // A real edit under `yolo`, then a conclusion. main() builds its OWN real ToolWorkerClient, so the
+    // edit executes in the actual sandbox — this is the argv/--json/exit-code surface end to end.
+    const provider = scriptedProvider([
+      [
+        toolCall('call_edit0001', 'edit_file', {
+          path: 'math.mjs',
+          oldText: 'a + b',
+          newText: 'a * b',
+        }),
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text-done', itemId: 'm', text: 'multiply now multiplies.' },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ]);
+
+    const out: string[] = [];
+    const deps: CliDeps = {
+      argv: ['run', '--json', '--profile', 'yolo', 'fix the bug'],
+      env: {},
+      cwd: workspace,
+      now: () => 1_700_000_000_000,
+      stdout: (l) => out.push(l),
+      stderr: () => {},
+      provider,
+    };
+
+    const code = await main(deps);
+
+    // Exit code and structured result are the machine contract.
+    expect(code).toBe(0);
+    const parsed = JSON.parse(out[0]!) as { state: string; finalText: string };
+    expect(parsed.state).toBe('completed');
+    expect(parsed.finalText).toContain('multiplies');
+
+    // The real sandbox actually applied the edit to disk.
+    expect(readFileSync(join(workspace, 'math.mjs'), 'utf8')).toContain('a * b');
   });
 });
 

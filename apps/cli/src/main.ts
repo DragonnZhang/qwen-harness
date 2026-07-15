@@ -251,6 +251,9 @@ async function runCommand(
   const prompt = positional.join(' ').trim();
 
   const asJson = 'json' in flags;
+  // `--quiet` silences INFORMATIONAL chrome (status lines, recovery/MCP notes) for a machine caller;
+  // it never silences the actual result (stdout) or a genuine error (those a script must still see).
+  const quiet = 'quiet' in flags;
 
   // Configuration is LOADED, not assumed. Flags are just the highest-precedence config source, so
   // they flow through the same resolution as managed/user/project files — and are clamped by the
@@ -317,7 +320,7 @@ async function runCommand(
   // replayed. The most this does is make a stuck side effect VISIBLE, so `side-effects` can list it
   // and a human can resolve it.
   const recovered = recoverInterrupted(store);
-  if (recovered.promoted > 0 && !asJson) {
+  if (recovered.promoted > 0 && !asJson && !quiet) {
     deps.stderr(
       `note: ${recovered.promoted} side effect(s) were interrupted by a previous crash and are now ` +
         `INDETERMINATE — their outcome is unknown and they will not be re-run. ` +
@@ -476,8 +479,11 @@ async function runCommand(
       builtinNames: new Set(BUILTIN_TOOLS.map((t) => t.name)),
     });
     for (const failure of mcp?.failed ?? []) {
-      // A broken MCP server degrades the run; it does not end it (MC-06).
-      deps.stderr(`note: MCP server '${failure.server}' did not connect: ${failure.error}`);
+      // A broken MCP server degrades the run; it does not end it (MC-06). This is an informational
+      // note on stderr, so `--quiet` (machine mode) suppresses it — the degradation is still
+      // discoverable structurally; a script reads state, not stderr prose.
+      if (!quiet)
+        deps.stderr(`note: MCP server '${failure.server}' did not connect: ${failure.error}`);
     }
 
     // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
@@ -647,14 +653,21 @@ async function runCommand(
       );
     } else if (awaiting !== null) {
       deps.stdout(`this turn is waiting for an approval: ${awaiting.description}`);
-      deps.stderr(
-        `\n[awaiting-approval]  session ${threadId}\n` +
-          `answer it with: qwen-harness resume ${threadId}`,
-      );
+      // The trailing "how to resume" chrome is decoration duplicating exit code 3; `--quiet` drops it.
+      if (!quiet) {
+        deps.stderr(
+          `\n[awaiting-approval]  session ${threadId}\n` +
+            `answer it with: qwen-harness resume ${threadId}`,
+        );
+      }
     } else {
       deps.stdout(result.finalText || '(no text output)');
-      deps.stderr(`\n[${result.state}: ${result.reason ?? 'done'}]  session ${threadId}`);
-      if (detail) deps.stderr(`detail: ${detail}`);
+      // The trailing status line duplicates the exit code (and the JSON `state`/`reason`); drop it
+      // under `--quiet` so a machine caller's stderr carries only genuine errors.
+      if (!quiet) {
+        deps.stderr(`\n[${result.state}: ${result.reason ?? 'done'}]  session ${threadId}`);
+        if (detail) deps.stderr(`detail: ${detail}`);
+      }
     }
 
     if (result.state === 'completed') return 0;
@@ -1726,7 +1739,7 @@ async function teamCommand(deps: CliDeps, args: readonly string[]): Promise<numb
 /** Flags that never take a value. Everything else consumes the following token. */
 const BOOLEAN_FLAGS = new Set(['json', 'quiet', 'no-color', 'keep-worktrees']);
 
-function parseFlags(args: readonly string[]): {
+export function parseFlags(args: readonly string[]): {
   flags: Record<string, string>;
   positional: string[];
 } {
