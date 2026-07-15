@@ -139,6 +139,31 @@ export function createWorktree(opts: CreateWorktreeOptions): WorktreeRecord {
   return { slug: opts.slug, path, branch, base, repoRoot: opts.repoRoot, createdAt: opts.now };
 }
 
+/** The origin repository's state at the moment a worktree was created — recorded so a later recovery
+ * knows exactly where the work came from (GT-03). */
+export interface WorktreeOrigin {
+  /** The main working directory the worktree was branched from. */
+  readonly originalCwd: string;
+  /** The branch the origin repo had checked out, or `(detached)` for a detached HEAD. */
+  readonly originalBranch: string;
+  /** The origin repo's HEAD commit at creation time. */
+  readonly originalHead: string;
+}
+
+/** Capture the origin repo's cwd/branch/HEAD for durable recovery metadata (GT-03). */
+export function captureWorktreeOrigin(repoRoot: string): WorktreeOrigin {
+  assertRepo(repoRoot);
+  const originalHead = git(repoRoot, ['rev-parse', 'HEAD']);
+  let originalBranch: string;
+  try {
+    originalBranch = git(repoRoot, ['symbolic-ref', '--short', 'HEAD']);
+  } catch {
+    // A detached HEAD has no symbolic branch; that is recorded, not guessed.
+    originalBranch = '(detached)';
+  }
+  return { originalCwd: repoRoot, originalBranch, originalHead };
+}
+
 export function listWorktrees(repoRoot: string): { path: string; branch: string }[] {
   assertRepo(repoRoot);
   const out = git(repoRoot, ['worktree', 'list', '--porcelain']);

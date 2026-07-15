@@ -18,11 +18,15 @@ export {
   hasUnmergedCommits,
   validateSlug,
   tempWorktreesDir,
+  captureWorktreeOrigin,
   WorktreeError,
 } from './worktree.ts';
 export type {
   WorktreeRecord,
+  WorktreeOrigin,
   CreateWorktreeOptions,
   RemoveWorktreeOptions,
   RemoveResult,
 } from './worktree.ts';
+export { WorktreeStore, toPersisted, reconcile } from './persistence.ts';
+export type { PersistedWorktree, RecoveryState } from './persistence.ts';

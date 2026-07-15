@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **94** |
-| IN_PROGRESS | 83 | 45 |
+| **VERIFIED** | 38 | **95** |
+| IN_PROGRESS | 83 | 44 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -234,6 +234,21 @@ deterministic); I (`apps/cli/test/integration/compaction.test.ts` — real TurnE
 T (`apps/tui/test/pty/golden-path-8.test.ts` — the compiled TUI over a real PTY: once a transcript
 exists the `<n> ctx` utilization indicator renders in the frame, the previously-dead branch now live).
 The full `pnpm check` passes with this fix.
+
+**GT-03 (worktree persistence + recovery) is now VERIFIED — the persistence layer was entirely
+missing, so it was BUILT.** `createWorktree` did the git side effect and returned an in-memory record;
+nothing survived a crash, and the record captured none of the spec's origin/owner/session/recovery
+fields. There was no worktree event or store anywhere in the codebase. Added: `captureWorktreeOrigin`
+(records the origin repo's real cwd/branch/HEAD via the hardened git helper), a durable `WorktreeStore`
+(a `<repoRoot>/.qwen-harness/worktrees.json` manifest holding path/branch/base, origin, owner/session,
+and recovery state), and `reconcile` (re-derives each record's recovery state from the filesystem —
+an orphaned checkout whose directory is gone is detected, not silently forgotten). Evidence, all
+genuine: U (`packages/worktrees/test/unit/persistence.test.ts` — every field round-trips, a FRESH
+store reads what a prior one wrote, upsert/remove by slug, reconcile re-derives state, a corrupt
+manifest throws and a malformed entry is isolated); I (`.../test/integration/persistence.test.ts` —
+a REAL git worktree with its captured real branch/HEAD persists and reloads from a fresh store); F
+(same file — deleting a checkout directory out from under the manifest, a crash simulation, reconciles
+that record to `orphaned` while an intact sibling stays `active`). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
