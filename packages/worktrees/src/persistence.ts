@@ -31,6 +31,13 @@ export interface PersistedWorktree {
   /** The session/thread the worktree belongs to. */
   readonly session: string;
   readonly recoveryState: RecoveryState;
+  /**
+   * OPTIONAL task binding (GT-05). A worktree may be associated with a task, but this is metadata on
+   * the WORKTREE side only — it lives here, never on the task, so binding can never silently change a
+   * task's state, and task ownership (the task graph) and workspace ownership (this manifest) stay
+   * independently recoverable. Absent when the worktree is not bound to any task.
+   */
+  readonly boundTaskId?: number;
 }
 
 const MANIFEST_VERSION = 1;
@@ -42,7 +49,13 @@ function manifestPath(repoRoot: string): string {
 /** Build a durable record from a freshly-created worktree plus its owner/session and captured origin. */
 export function toPersisted(
   record: WorktreeRecord,
-  meta: { readonly origin: WorktreeOrigin; readonly owner: string; readonly session: string },
+  meta: {
+    readonly origin: WorktreeOrigin;
+    readonly owner: string;
+    readonly session: string;
+    /** Optional task binding (GT-05) — metadata only, never mirrored onto the task. */
+    readonly boundTaskId?: number;
+  },
 ): PersistedWorktree {
   return {
     slug: record.slug,
@@ -55,6 +68,7 @@ export function toPersisted(
     owner: meta.owner,
     session: meta.session,
     recoveryState: existsSync(record.path) ? 'active' : 'orphaned',
+    ...(meta.boundTaskId !== undefined ? { boundTaskId: meta.boundTaskId } : {}),
   };
 }
 
@@ -72,6 +86,7 @@ function isPersisted(value: unknown): value is PersistedWorktree {
     typeof v['owner'] === 'string' &&
     typeof v['session'] === 'string' &&
     (v['recoveryState'] === 'active' || v['recoveryState'] === 'orphaned') &&
+    (v['boundTaskId'] === undefined || typeof v['boundTaskId'] === 'number') &&
     typeof o === 'object' &&
     o !== null &&
     typeof o['originalCwd'] === 'string' &&
@@ -119,6 +134,33 @@ export class WorktreeStore {
 
   remove(slug: string): void {
     this.#write(this.list().filter((w) => w.slug !== slug));
+  }
+
+  /**
+   * Bind (or, with `null`, unbind) a worktree to a task (GT-05). This touches ONLY the worktree
+   * manifest — the task graph is never read or written here — so a binding can never change a task's
+   * state. Returns the updated record, or undefined if the slug is unknown.
+   */
+  bind(slug: string, taskId: number | null): PersistedWorktree | undefined {
+    const current = this.get(slug);
+    if (current === undefined) return undefined;
+    // Rebuild without the old binding, then re-add it only when binding (not unbinding). Rebuilt
+    // explicitly rather than by rest-destructuring so there is no dropped-variable to lint around.
+    const updated: PersistedWorktree = {
+      slug: current.slug,
+      path: current.path,
+      branch: current.branch,
+      base: current.base,
+      repoRoot: current.repoRoot,
+      createdAt: current.createdAt,
+      origin: current.origin,
+      owner: current.owner,
+      session: current.session,
+      recoveryState: current.recoveryState,
+      ...(taskId !== null ? { boundTaskId: taskId } : {}),
+    };
+    this.save(updated);
+    return updated;
   }
 
   #write(worktrees: PersistedWorktree[]): void {

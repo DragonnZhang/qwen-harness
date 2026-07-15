@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **99** |
-| IN_PROGRESS | 83 | 40 |
+| **VERIFIED** | 38 | **100** |
+| IN_PROGRESS | 83 | 39 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -302,6 +302,21 @@ profile, requested profile, and managed policy the computed child authority `isA
 child can never escalate by asking — and spawning past the total-child limit or from a supervisor
 already at the depth limit is refused with a typed error, so no unbounded tree can grow. The full
 `pnpm check` passes.
+
+**GT-05 (task/worktree binding independence) is now VERIFIED — the binding was built as
+worktree-side-only metadata.** The requirement is that a task↔worktree binding is OPTIONAL metadata
+that never silently changes task state, and that task ownership and workspace ownership stay
+independently recoverable. Implemented structurally: an optional `boundTaskId` on the durable
+`PersistedWorktree`, set/cleared by `WorktreeStore.bind(slug, taskId | null)`, which reads and writes
+ONLY the worktree manifest — it has no `TaskGraph` dependency (the `worktrees` package does not even
+depend on `tasks`), so binding cannot touch a task by construction. Evidence, all genuine: U + P
+(`packages/worktrees/test/unit/binding.test.ts` — a worktree without a binding is valid, bind/unbind
+round-trip durably, an unknown slug is a reported no-op, and over any sequence of bind/unbind ops the
+binding reflects the last op while every other field stays byte-identical); I + F
+(`apps/cli/test/integration/worktree-binding.test.ts` — over the REAL `TaskGraph` + `WorktreeStore` +
+real git: binding a worktree to a claimed task leaves the task's owner/status untouched; then a crash
+orphans the checkout and the task is entirely unaffected, while completing the task never disturbs the
+worktree binding — the two recover on independent tracks). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
