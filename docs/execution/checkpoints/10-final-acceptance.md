@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **97** |
-| IN_PROGRESS | 83 | 42 |
+| **VERIFIED** | 38 | **98** |
+| IN_PROGRESS | 83 | 41 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -273,6 +273,22 @@ RELEASES its task back to the pool so another teammate retries it — never sile
 stranded); `packages/teams/src/teammate.property.test.ts` for **P** (N teammates stepped concurrently
 in rounds drain M tasks with every task worked EXACTLY ONCE by exactly one owner — the atomic claim,
 not a dispatcher, prevents duplication). The full `pnpm check` passes.
+
+**AG-12 (lost-teammate reclaim without duplicate execution) is now VERIFIED — U/P/F added, and the E
+unblocked cleanly.** `TeamRecovery` (detectLost + reclaimTasks) had only one integration test. Added
+`packages/teams/src/reclaim.test.ts` for **U** (reclaim releases ONLY the lost member's
+claimed/in-progress tasks — never a completed one, another member's, or an unowned one — and
+detectLost respects the heartbeat timeout) and **F** (a lost member's in-flight task is reclaimed and
+completed EXACTLY once by another; the ghost never re-runs it), and
+`packages/teams/src/reclaim.property.test.ts` for **P** (over any roster, reclaim is selective and
+leaves every non-reclaimed task byte-identical). The **E** needed the recovery machinery in a real
+end-to-end task, which `evals` could not import — so `@qwen-harness/teams` was added to the
+HAND-MAINTAINED `evals/package.json` + `evals/tsconfig.json` (evals is not a `PACKAGE_DEPS` key, so
+gen-packages is not involved and the risky generator path is avoided). `evals/e2e/team-recovery.test.ts`
+now drives the full flow: a teammate claims+starts a task then vanishes, recovery detects the loss and
+reclaims, and a survivor running the REAL autonomous loop drains the whole pool — every task completed
+once, the abandoned one finished by the survivor, no double-run. The full `pnpm check` passes. (This
+dep addition also unblocks the E class for other teams-backed rows.)
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

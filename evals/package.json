@@ -19,6 +19,7 @@
     "@qwen-harness/scheduler": "workspace:*",
     "@qwen-harness/background": "workspace:*",
     "@qwen-harness/tasks": "workspace:*",
+    "@qwen-harness/teams": "workspace:*",
     "@qwen-harness/cli": "workspace:*",
     "@qwen-harness/testkit": "workspace:*"
   },

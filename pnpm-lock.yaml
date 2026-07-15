@@ -303,6 +303,9 @@ importers:
       '@qwen-harness/tasks':
         specifier: workspace:*
         version: link:../packages/tasks
+      '@qwen-harness/teams':
+        specifier: workspace:*
+        version: link:../packages/teams
       '@qwen-harness/testkit':
         specifier: workspace:*
         version: link:../packages/testkit

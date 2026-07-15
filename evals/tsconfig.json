@@ -19,6 +19,7 @@
     { "path": "../packages/mcp" },
     { "path": "../packages/network" },
     { "path": "../packages/runtime" },
+    { "path": "../packages/teams" },
     { "path": "../packages/testkit" }
   ]
 }
