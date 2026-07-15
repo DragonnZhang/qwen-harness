@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **102** |
-| IN_PROGRESS | 83 | 37 |
+| **VERIFIED** | 38 | **103** |
+| IN_PROGRESS | 83 | 36 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -347,6 +347,22 @@ migration rolls back atomically — no partial schema, version unchanged); S
 (`test/security/permissions.test.ts` — the file is 0600 with no group/other bits, WAL + fail-fast busy
 timeout so a second connection reads only committed data); D (`docs/guide/operations.md` maintenance
 section with the runnable commands). The full `pnpm check` passes.
+
+**PK-03 (managed-policy precedence) is now VERIFIED — P/S added, and a STALE DOC corrected.** The
+config resolver (`resolveConfig`: per-key last-write-wins with `managed` never out-voting an ordinary
+value, deny-union that only ever grows, managed ceiling clamped last) was fully implemented with U
+(`resolve.test.ts`) and I (`test/integration/load.test.ts`). Added the missing **P**
+(`packages/config/src/resolve.property.test.ts` — for any set of scopes the highest-precedence one
+that set a key wins with matching provenance, and the deny list is exactly the union) and **S**
+(`packages/config/test/security/managed-ceiling.test.ts` — a hostile lower scope cannot widen
+authority past the managed ceiling and can never drop a managed deny). The **D** required correcting a
+genuinely misleading doc: `configuration.md` claimed "only `doctor` reads it" and "do not deploy a
+managed policy and assume it constrains a run" — but `loadRunAuthority` → `authorityFromConfig` now
+hoists the deny-union into managed rules and hands the clamped ceiling to `createHarnessRuntime`
+(verified: `--profile yolo` under managed `maxProfile: ask` resolves to `ask`; `main.ts` also reads
+config `model` and `telemetry`). The doc now states the truth — the ceiling is enforced in a real run
+— with the one honest remaining gap (`budgets`/`toolOutput` still take engine defaults) noted. The
+full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

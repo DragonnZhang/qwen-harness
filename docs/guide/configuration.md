@@ -7,28 +7,24 @@ so an unknown key is a visible error, not a silently ignored setting.
 ## Read this first: what actually consumes configuration today
 
 The configuration system — schema, layering, precedence, provenance, migrations — is fully
-implemented and tested. But in the current applications, **only `doctor` reads it.**
-
-`qwen-harness run` and `resume` build their runtime from the command line and the built-in defaults:
-the profile comes from `--profile` (default `ask`), the model from `--model` (default `qwen3.7-max`),
-and the DashScope provider uses its own default endpoint and `responses` transport. The policy engine
-is constructed with **no managed policy and no rules**.
+implemented and tested, and it **is now consumed by `run` and `resume`**, not only by `doctor`.
+`loadRunAuthority` resolves every scope and hands the result to the engine, so a managed policy file
+genuinely constrains a run (`apps/cli/src/policy-from-config.ts`, `wiring.ts`).
 
 Concretely, in today's CLI:
 
 | Key | Affects `doctor` | Affects a `run` |
 |---|---|---|
-| `model`, `baseUrl`, `apiKeyEnv`, `reasoningEffort`, `transport` | yes (reported with provenance) | **no** |
-| `permissionProfile`, `isolation`, `network` | yes (reported) | **no** — use `--profile` |
-| `maxProfile`, `maxIsolation`, `networkAllowed`, `deny` | yes (resolved and reported) | **no** — the ceiling is not loaded into the engine |
-| `budgets.*`, `toolOutput.*`, `telemetry.enabled` | yes (resolved) | **no** — the runtime uses its own built-in defaults, which have the same values |
+| `maxProfile`, `maxIsolation`, `networkAllowed`, `deny` | yes (resolved and reported) | **yes — enforced.** The managed ceiling clamps authority and the `deny` union becomes managed rules; `--profile yolo` under a managed `maxProfile: ask` resolves to `ask`. |
+| `permissionProfile`, `isolation`, `network` | yes (reported) | **yes** — the resolved value (clamped to the ceiling) is the base authority; `--profile` is just the highest-precedence (`cli`) scope over it. |
+| `model`, `baseUrl`, `apiKeyEnv`, `reasoningEffort`, `transport` | yes (reported with provenance) | **yes** — the provider is built from the resolved config. |
+| `telemetry.enabled`, `telemetryLevel`, `telemetryRetentionDays` | yes (resolved) | **yes** — the trace sink is configured from them. |
+| `budgets.*`, `toolOutput.*` | yes (resolved) | **not yet** — the runtime uses its own built-in defaults, which currently hold the same values. |
 
-This is a composition gap, not a design gap: the resolver, the ceiling, and the deny-merge all work
-and are unit-tested; the CLI's composition root does not yet feed them into the engine. It is
-recorded in [Library surface and current gaps](library-surface.md). **Do not deploy a managed policy
-file and assume it constrains a `run`.** See the [operator guide](operations.md#managed-policy).
-
-Everything below documents the schema as it is: correct, and — where noted — not yet consumed.
+So a managed administrator's ceiling, the deny-union, the effective profile/isolation/network, the
+model, the provider endpoint, and telemetry all flow into a real run. The one remaining gap is the
+`budgets`/`toolOutput` numbers, which the engine still takes from its frozen defaults (identical
+values today). See the [operator guide](operations.md#managed-policy) for deploying a managed policy.
 
 ## Files and scopes
 
