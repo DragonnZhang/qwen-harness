@@ -132,7 +132,7 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | IN_PROGRESS |
 | AG-04 | A subagent can be resumed by identity and retains its own compacted history, while ordinary completion returns only an attributed summary to the parent. | U,I,F,E | REQUIRED |
 | AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | IN_PROGRESS |
-| AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | IN_PROGRESS |
+| AG-06 | Inbox writes and reads are atomic, ordered, idempotent, and wake sleeping agents; lead injects normal messages only after protocol handling. | U,P,I,F | VERIFIED |
 | AG-07 | Protocol messages cover normal message, idle, permission request/response, plan approval request/response, shutdown request/approved/rejected, task assignment, team permission update, mode-set, sandbox permission request/response, and termination. | U,I,E | VERIFIED |
 | AG-08 | Requests carry correlation IDs and typed finite-state machines; response type and sender/recipient must match an outstanding request. | U,P,I,S | VERIFIED |
 | AG-09 | Plan approval keeps the teammate read-only until accepted; rejection feedback requires revision and resubmission. | U,I,T,E | REQUIRED |

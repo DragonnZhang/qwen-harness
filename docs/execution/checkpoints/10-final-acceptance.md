@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **95** |
-| IN_PROGRESS | 83 | 44 |
+| **VERIFIED** | 38 | **96** |
+| IN_PROGRESS | 83 | 43 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -249,6 +249,17 @@ manifest throws and a malformed entry is isolated); I (`.../test/integration/per
 a REAL git worktree with its captured real branch/HEAD persists and reloads from a fresh store); F
 (same file — deleting a checkout directory out from under the manifest, a crash simulation, reconciles
 that record to `orphaned` while an intact sibling stays `active`). The full `pnpm check` passes.
+
+**AG-06 (teammate inbox) is now VERIFIED — P and F added over the existing, correct implementation.**
+The `Inbox` was already ordered, idempotent (a permanent `#seen` id set), and wakes a sleeping reader,
+with U (`inbox.test.ts`) and I (`test/integration/teammate.test.ts` — the inbox drives real teammate
+loops and the atomic single-winner task claim). The two missing classes are now real:
+`packages/teams/src/inbox.property.test.ts` proves **P** (across any delivery sequence with duplicate
+ids: `deliver` returns true exactly for a first sighting, entries drain in first-seen order on a
+strictly-increasing sequence, `pending` equals the distinct-id count, a drain empties it, and a
+post-drain replay delivers nothing) and **F** (the crash-replay recovery idempotency exists for — a
+writer that crashed mid-append and replays its whole batch leaves the inbox byte-identical, no
+duplicated message). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
