@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **98** |
-| IN_PROGRESS | 83 | 41 |
+| **VERIFIED** | 38 | **99** |
+| IN_PROGRESS | 83 | 40 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -289,6 +289,19 @@ now drives the full flow: a teammate claims+starts a task then vanishes, recover
 reclaims, and a survivor running the REAL autonomous loop drains the whole pool — every task completed
 once, the abandoned one finished by the survivor, no double-run. The full `pnpm check` passes. (This
 dep addition also unblocks the E class for other teams-backed rows.)
+
+**AG-03 (bounded subagents) is now VERIFIED — P added over comprehensive existing coverage.** The
+`SubagentSupervisor` already had U/F/S in `packages/agents/src/subagent.test.ts` (authority
+intersection so a child never exceeds its parent even when it requests more, the managed ceiling
+capping a yolo parent, a bounded conclusion rather than the full transcript, count/depth limits, a
+child at max depth cannot spawn grandchildren, and parent-cancellation propagation) and I in
+`apps/cli/test/integration/team.test.ts` (a teammate — a subagent via the same `SubagentSupervisor` —
+is clamped from `yolo` down to an `ask`/`plan` lead ceiling with the real policy intersection, never
+widened). Added the missing **P** (`packages/agents/src/subagent.property.test.ts`): for ANY parent
+profile, requested profile, and managed policy the computed child authority `isAtMost` the parent — a
+child can never escalate by asking — and spawning past the total-child limit or from a supervisor
+already at the depth limit is refused with a typed error, so no unbounded tree can grow. The full
+`pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
