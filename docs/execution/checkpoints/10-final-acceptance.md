@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **91** |
-| IN_PROGRESS | 83 | 48 |
+| **VERIFIED** | 38 | **92** |
+| IN_PROGRESS | 83 | 47 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -178,6 +178,26 @@ contract via `main()`: one structured JSON line + exit 0 on completion; an appro
 SUSPENDS and is surfaced in JSON with exit code 3, never blocking; `--quiet` strips the status line
 but keeps the result; output is ANSI-free; `resume <id> <prompt>` continues the SAME durable session).
 The full `pnpm check` passes with this fix.
+
+**RT-04 (typed termination reasons) is now VERIFIED — and it retroactively caught a bug from the
+HK-05 fix.** Writing RT-04's property test surfaced that `#endTurn` took a free `reason: string` and
+appended it to the durable `turn-ended` event with an `as never` cast — so the HK-05 change had
+emitted `'hook-stopped'`, which is NOT in `TerminationReasonSchema` (the canonical value is
+`'hook-stop'`). It did not crash only because the sink does not Zod-validate on write; a consumer that
+parses a `turn-ended` event on read/export WOULD reject it. Fixed both ways: the reason is corrected
+to the canonical `'hook-stop'`, and `#endTurn` (plus the `ToolPhase` budget variant) now takes a
+`TerminationReason`, not a string — so the COMPILER refuses an untyped reason at the boundary, which
+is RT-04's guarantee made structural. The budget module was already exemplary (`BudgetVerdict.reason`
+is `TerminationReason`); the leak was only the widening at the turn-engine seam. Evidence, all genuine:
+U (`packages/runtime/src/budget.test.ts` — each limit → its specific reason); P
+(`packages/runtime/src/budget.property.test.ts` — over any sequence of model/tool/retry/idle/repeat/
+time operations, a `stop` verdict NEVER carries an untyped or off-enum reason, the run is
+deterministic, and each pathology maps to its OWN reason: repeated-identical-calls, no-progress,
+model-call-limit, time-limit, retry-limit); F (`packages/runtime/test/integration/turn-engine.test.ts`
+— repeated-identical-calls, no-progress, and a permanently-failing retryable fault bounded at the
+attempt budget); E (`evals/e2e/termination.test.ts` — a real `main()` turn scripted into an
+identical-call loop terminates with `repeated-identical-calls`, surfaced through the headless JSON,
+and the reason parses against the enum). The full `pnpm check` passes with this fix.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

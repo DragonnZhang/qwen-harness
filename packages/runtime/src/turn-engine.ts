@@ -6,6 +6,7 @@ import {
   type IdSource,
   type ItemId,
   type PermissionProfile,
+  type TerminationReason,
   type ThreadId,
   type TurnId,
 } from '@qwen-harness/protocol';
@@ -311,7 +312,7 @@ interface DriveContext {
 
 type ToolPhase =
   | { readonly stop: false }
-  | { readonly stop: true; readonly kind: 'budget'; readonly reason: string }
+  | { readonly stop: true; readonly kind: 'budget'; readonly reason: TerminationReason }
   | { readonly stop: true; readonly kind: 'cancelled' }
   // A PostToolUse hook returned `stop`: the completed tool result is durable and untouched, but the
   // turn does NOT continue to another model round. Distinct from `blocked` (which stops the action
@@ -453,8 +454,8 @@ export class TurnEngine {
           if (phase.stop && phase.kind === 'hook-stop') {
             // A PostToolUse hook stopped continuation. The tool result is already durable; the turn
             // ends cleanly (completed) instead of driving another model round (HK-05).
-            this.#endTurn(base, machine, 'completed', 'hook-stopped');
-            terminalReason = 'hook-stopped';
+            this.#endTurn(base, machine, 'completed', 'hook-stop');
+            terminalReason = 'hook-stop';
             break;
           }
           if (phase.stop && phase.kind === 'awaiting-approval') {
@@ -1375,12 +1376,14 @@ export class TurnEngine {
     base: PersistBase,
     machine: TurnMachine,
     state: 'completed' | 'failed' | 'cancelled' | 'blocked' | 'budget-exhausted',
-    reason: string,
+    // A TerminationReason, not a free string: the compiler now REFUSES an untyped reason here, which
+    // is exactly RT-04's guarantee that every turn ends with a typed, enumerable reason.
+    reason: TerminationReason,
   ): void {
-    if (!machine.isTerminal) machine.terminate(state, reason as never);
+    if (!machine.isTerminal) machine.terminate(state, reason);
     this.#deps.sink.append({
       ...base,
-      payload: { type: 'turn-ended', state, reason: reason as never },
+      payload: { type: 'turn-ended', state, reason },
     });
   }
 }
