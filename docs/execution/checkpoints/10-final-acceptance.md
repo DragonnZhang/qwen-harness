@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **96** |
-| IN_PROGRESS | 83 | 43 |
+| **VERIFIED** | 38 | **97** |
+| IN_PROGRESS | 83 | 42 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -260,6 +260,19 @@ strictly-increasing sequence, `pending` equals the distinct-id count, a drain em
 post-drain replay delivers nothing) and **F** (the crash-replay recovery idempotency exists for — a
 writer that crashed mid-append and replays its whole batch leaves the inbox byte-identical, no
 duplicated message). The full `pnpm check` passes.
+
+**AG-11 (autonomous teammate loop) is now VERIFIED — U, P, F added over the existing loop.** The
+`Teammate` state machine (shutdown-first, drain inbox, atomically claim a pending/unowned/unblocked
+task, else idle) already had I (`test/integration/teammate.test.ts` — claim/complete/idle, the
+two-teammates-one-task atomic race, shutdown-first) and E (`evals/e2e/team.test.ts` — a lead plus
+three REAL teammate OS processes in isolated worktrees drain four DEPENDENT tasks with no collision,
+exactly one work-result per task, clean shutdown). Added the missing three, all genuine:
+`packages/teams/src/teammate.test.ts` for **U** (the transitions: claim→work→complete→idle, a stopped
+teammate stays inert, an aborted signal stops before claiming) and **F** (a FAILED unit of work
+RELEASES its task back to the pool so another teammate retries it — never silently completed or
+stranded); `packages/teams/src/teammate.property.test.ts` for **P** (N teammates stepped concurrently
+in rounds drain M tasks with every task worked EXACTLY ONCE by exactly one owner — the atomic claim,
+not a dispatcher, prevents duplication). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
