@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **89** |
-| IN_PROGRESS | 83 | 50 |
+| **VERIFIED** | 38 | **90** |
+| IN_PROGRESS | 83 | 49 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -140,6 +140,25 @@ kept `updatedAt` is the max for its name) and E (`evals/e2e/memory-consolidate.t
 share a `name`, `memory consolidate` resolves the conflict newer-wins and deletes the loser, and the
 store then lists exactly one). U/I/F were already real (`consolidation.test.ts`, `dream.test.ts`).
 The full `pnpm check` passes with this feature.
+
+**HK-05 (post-tool hooks stop continuation) is now VERIFIED — a 10th loaded-but-not-wired case,
+found by running the real thing and FIXED.** The hook engine computed `FoldedHookResult.stopped`
+(with `resultDurable`) for a PostToolUse `stop`, and `engine.test.ts` proved the hook engine honours
+it — but the turn engine's `TurnHooks.postToolUse` returned `Promise<void>` and the CLI adapter threw
+the signal away, so a real `stop` was silently dropped: the tool ran and the turn continued to
+another model round anyway. The E golden task caught it (the model was asked twice, not once). Fix,
+end to end: `TurnHooks.postToolUse` now returns `void | {stopContinuation?}`; the turn engine records
+the durable tool-result and the paired function-output FIRST, then a `stop` ends the turn via a new
+`hook-stop` phase kind that completes the turn cleanly (`completed`/`hook-stopped`) instead of driving
+another round — in BOTH the serial (`#runOneCall`) and parallel-batch (`#runParallelBatch`) paths; the
+`hook-fired` event now records `outcome: 'stop'`; the CLI adapter propagates `result.stopped`. A void
+return still means "do not stop", so every existing `TurnHooks` fake is unaffected (30 runtime tests
+green). Evidence, all genuine: U + F (`packages/hooks/src/engine.test.ts` — re-entry refusal 198-234,
+post-tool stop-without-corruption 224, throwing/timeout hook surfaced 156-174); I
+(`apps/cli/test/integration/hooks.test.ts` — a real command hook returns `stop` on the real turn: the
+tool marker IS written and the durable tool-result IS present, a `hook-fired`/`stop` is recorded, and
+the round-2 tripwire text never lands); E (`evals/e2e/hooks.test.ts` — the full `main()` flow with a
+real hook process asks the model exactly once). The full `pnpm check` passes with this fix.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

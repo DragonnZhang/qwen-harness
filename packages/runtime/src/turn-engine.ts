@@ -181,7 +181,13 @@ export interface TurnHooks {
     toolName: string;
     arguments: Readonly<Record<string, unknown>>;
   }): Promise<{ blocked: boolean; reason: string | null }>;
-  postToolUse(call: { toolName: string; ok: boolean }): Promise<void>;
+  // Returns whether continuation should stop. A `void`/absent return means "do not stop" — the
+  // completed tool result is always durable regardless (HK-05); `stopContinuation` only decides
+  // whether the turn goes back to the model for another round.
+  postToolUse(call: {
+    toolName: string;
+    ok: boolean;
+  }): Promise<void | { readonly stopContinuation?: boolean }>;
 }
 
 /**
@@ -307,6 +313,10 @@ type ToolPhase =
   | { readonly stop: false }
   | { readonly stop: true; readonly kind: 'budget'; readonly reason: string }
   | { readonly stop: true; readonly kind: 'cancelled' }
+  // A PostToolUse hook returned `stop`: the completed tool result is durable and untouched, but the
+  // turn does NOT continue to another model round. Distinct from `blocked` (which stops the action
+  // itself) — the tool already ran (HK-05).
+  | { readonly stop: true; readonly kind: 'hook-stop' }
   | {
       readonly stop: true;
       readonly kind: 'awaiting-approval';
@@ -438,6 +448,13 @@ export class TurnEngine {
           if (phase.stop && phase.kind === 'cancelled') {
             this.#cancel(base, machine);
             terminalReason = 'user-cancelled';
+            break;
+          }
+          if (phase.stop && phase.kind === 'hook-stop') {
+            // A PostToolUse hook stopped continuation. The tool result is already durable; the turn
+            // ends cleanly (completed) instead of driving another model round (HK-05).
+            this.#endTurn(base, machine, 'completed', 'hook-stopped');
+            terminalReason = 'hook-stopped';
             break;
           }
           if (phase.stop && phase.kind === 'awaiting-approval') {
@@ -865,15 +882,17 @@ export class TurnEngine {
 
       // PostToolUse fires after the result is durable, so a post hook can never corrupt the
       // completed tool result — it only observes it and may influence the NEXT step (HK-05).
+      let hookStop = false;
       if (this.#deps.hooks) {
-        await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        const post = await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        hookStop = post?.stopContinuation === true;
         sink.append({
           ...base,
           payload: {
             type: 'hook-fired',
             event: result.ok ? 'PostToolUse' : 'PostToolUseFailure',
             handler: call.toolName,
-            outcome: 'continue',
+            outcome: hookStop ? 'stop' : 'continue',
             durationMs: 0,
           },
         });
@@ -913,6 +932,9 @@ export class TurnEngine {
       });
 
       if (signal.aborted) return { stop: true, kind: 'cancelled' };
+      // The result is durable and paired to the model above; a PostToolUse `stop` now ends the turn
+      // rather than driving another model round (HK-05).
+      if (hookStop) return { stop: true, kind: 'hook-stop' };
     }
 
     return { stop: false };
@@ -1062,6 +1084,7 @@ export class TurnEngine {
     );
 
     // PHASE 3 — in call order: settle, PostToolUse, durable tool-result, pair the output to the model.
+    let hookStop = false;
     for (let i = 0; i < cleared.length; i++) {
       const { call, sideEffectId } = cleared[i]!;
       const result = results[i]!;
@@ -1075,14 +1098,15 @@ export class TurnEngine {
         },
       });
       if (this.#deps.hooks) {
-        await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        const post = await this.#deps.hooks.postToolUse({ toolName: call.toolName, ok: result.ok });
+        if (post?.stopContinuation === true) hookStop = true;
         sink.append({
           ...base,
           payload: {
             type: 'hook-fired',
             event: result.ok ? 'PostToolUse' : 'PostToolUseFailure',
             handler: call.toolName,
-            outcome: 'continue',
+            outcome: post?.stopContinuation === true ? 'stop' : 'continue',
             durationMs: 0,
           },
         });
@@ -1120,6 +1144,9 @@ export class TurnEngine {
     }
 
     if (signal.aborted) return { stop: true, kind: 'cancelled' };
+    // Every tool in the batch ran and every result is durable; if any PostToolUse hook asked to stop,
+    // the turn ends after this batch rather than continuing to another model round (HK-05).
+    if (hookStop) return { stop: true, kind: 'hook-stop' };
     return { stop: false };
   }
 

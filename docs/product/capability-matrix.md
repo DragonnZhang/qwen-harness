@@ -103,7 +103,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | HK-02 | Hook handlers support command, HTTP, prompt/model, agent, and MCP forms where applicable, plus matcher/condition filters, timeouts, cancellation, ordering, and async notification. | U,I,F,S | IN_PROGRESS |
 | HK-03 | Hook output may block, message, add context, update permitted input, request/preserve permission behavior, annotate MCP output, prevent continuation, or provide a typed stop reason. | U,P,I,S | VERIFIED |
 | HK-04 | Hook allow cannot override policy deny/ask; modified input is fully revalidated; untrusted hook output is sanitized and attributed. | U,P,I,S | VERIFIED |
-| HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | IN_PROGRESS |
+| HK-05 | Stop hooks have re-entry protection, failures are visible, and post-tool hooks can stop continuation without corrupting the completed tool result. | U,I,F,E | VERIFIED |
 
 ## E. Todo, durable task graph, and plans
 

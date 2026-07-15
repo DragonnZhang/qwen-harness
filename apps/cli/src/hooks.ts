@@ -271,10 +271,13 @@ export function createHookRuntime(opts: {
         };
       },
       postToolUse: async (call) => {
-        await run(call.ok ? 'PostToolUse' : 'PostToolUseFailure', {
+        const result = await run(call.ok ? 'PostToolUse' : 'PostToolUseFailure', {
           toolName: call.toolName,
           data: { ok: call.ok },
         });
+        // The engine keeps the completed tool result durable regardless; `stopped` only decides
+        // whether the turn continues to another model round (HK-05, `resultDurable`).
+        return { stopContinuation: result.stopped };
       },
     },
   };

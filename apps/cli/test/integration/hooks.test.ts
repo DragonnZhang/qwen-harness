@@ -218,6 +218,119 @@ describe('a PreToolUse hook can block a tool on the real turn', () => {
   });
 });
 
+describe('a PostToolUse hook stops continuation without corrupting the result (HK-05)', () => {
+  let workspace: string;
+  let home: string;
+  let scriptPath: string;
+  const markerRel = 'tool-ran.marker';
+
+  const shellArgs = {
+    command: '/usr/bin/env',
+    argv: ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(markerRel)}, 'ran');`],
+    cwd: '.',
+  };
+
+  beforeEach(() => {
+    workspace = mkdtempSync(join(tmpdir(), 'qh-hooks-'));
+    home = mkdtempSync(join(tmpdir(), 'qh-hookhome-'));
+    mkdirSync(join(workspace, '.qwen-harness'), { recursive: true });
+
+    // Round 1 calls a tool; round 2 WOULD produce text — but a PostToolUse `stop` must end the turn
+    // before round 2 is ever requested. The distinctive text is the tripwire for a leaked round 2.
+    const script: ProviderStreamEvent[][] = [
+      [
+        {
+          type: 'tool-call-complete',
+          itemId: 'it_1',
+          callId: 'call_1',
+          toolName: 'run_shell',
+          argumentsJson: JSON.stringify(shellArgs),
+          arguments: shellArgs,
+        },
+        { type: 'done', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text-done', itemId: 'it_2', text: 'CONTINUATION-LEAKED-PAST-THE-HOOK' },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ];
+    scriptPath = join(workspace, 'script.json');
+    writeFileSync(scriptPath, JSON.stringify(script));
+  });
+
+  afterEach(() => {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('runs the tool (result durable), records a `stop`, and never asks the model again', async () => {
+    const hookScript = join(workspace, 'halt.sh');
+    writeHookScript(hookScript, {
+      type: 'stop',
+      reason: { code: 'halt', message: 'stop after the tool' },
+    });
+    writeFileSync(
+      join(workspace, '.qwen-harness', 'hooks.json'),
+      JSON.stringify({
+        version: 1,
+        hooks: [
+          {
+            id: 'halt',
+            event: 'PostToolUse',
+            matcher: { toolName: 'run_shell' },
+            handler: { type: 'command', command: hookScript },
+          },
+        ],
+      }),
+    );
+
+    const result = await runCli(workspace, home, scriptPath, [
+      'run',
+      '--profile',
+      'yolo',
+      'run a shell',
+    ]);
+    expect(result.code, result.stderr).toBe(0);
+
+    // The tool RAN — a PostToolUse hook fires after the result is durable, never suppressing it.
+    expect(existsSync(join(workspace, markerRel))).toBe(true);
+
+    const store = openStore(workspace);
+    try {
+      const events = store.readAll().map((e) => e.payload);
+
+      // The stop is durable and attributed.
+      const fired = events.filter((p) => p.type === 'hook-fired');
+      expect(
+        fired.some((p) => p.type === 'hook-fired' && p.outcome === 'stop'),
+        'the PostToolUse stop must be a durable, attributed hook-fired event',
+      ).toBe(true);
+
+      // The completed tool result is intact in the durable log.
+      expect(
+        events.some(
+          (p) => p.type === 'item-appended' && p.item.type === 'tool-result' && p.item.ok,
+        ),
+        'the completed tool result must remain durable (HK-05 resultDurable)',
+      ).toBe(true);
+
+      // THE ASSERTION: continuation stopped. Round 2 was never requested, so its text never landed.
+      const leaked = events.some(
+        (p) =>
+          p.type === 'item-appended' &&
+          p.item.type === 'message' &&
+          JSON.stringify(p.item).includes('CONTINUATION-LEAKED-PAST-THE-HOOK'),
+      );
+      expect(
+        leaked,
+        'the turn must not continue to another model round after a PostToolUse stop',
+      ).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe('hook configuration is validated, never silently ignored', () => {
   let workspace: string;
   let home: string;
