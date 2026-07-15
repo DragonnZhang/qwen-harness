@@ -152,7 +152,7 @@ Sources: [s07](https://learn.shareai.run/en/s07/), [s10](https://learn.shareai.r
 | IN-02 | Skill resolution uses a registry and canonical scope, never arbitrary model-provided paths; referenced scripts/assets/references remain inside the validated skill root. | U,P,I,S | VERIFIED |
 | IN-03 | Sources and precedence cover managed, user, project, additional directory, legacy commands, bundled, plugin, MCP, dynamic, and conditional skills. | U,P,I,D | VERIFIED |
 | IN-04 | Frontmatter supports name, description, usage condition, allowed tools, context mode, model hint, hooks, paths, user invocation, and argument substitution with strict validation. | U,I,S,E | VERIFIED |
-| IN-05 | Inline and forked skills have explicit context, tool, budget, permission, and result semantics; catalog and loaded-content token budgets are enforced. | U,P,I,E | REQUIRED |
+| IN-05 | Inline and forked skills have explicit context, tool, budget, permission, and result semantics; catalog and loaded-content token budgets are enforced. | U,P,I,E | VERIFIED |
 | IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | VERIFIED |
 | IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | VERIFIED |
 | IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | VERIFIED |
