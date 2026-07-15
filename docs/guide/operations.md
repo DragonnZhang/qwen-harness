@@ -202,6 +202,31 @@ qwen-harness trace --json   # one JSON record per line — pipe to jq or a scrip
 If telemetry was never enabled there is nothing to print, and `trace` tells you how to turn it on
 rather than failing; a corrupt line is reported on stderr, never silently skipped.
 
+## Session store maintenance
+
+The session store is `<workspace>/.qwen-harness/sessions.sqlite` — an append-only SQLite database
+(WAL, `synchronous=FULL`) created **owner-only (0600)**. Three maintenance operations keep it bounded
+and recoverable (SS-07):
+
+```sh
+qwen-harness maintenance prune --older-than-days 30   # drop sessions inactive for 30+ days
+qwen-harness maintenance vacuum                        # reclaim space freed by a prune
+qwen-harness maintenance backup ./snapshot.sqlite      # consistent online backup, safe while in use
+```
+
+- **Retention (`prune`)** operates at *thread* granularity: a session whose last activity predates the
+  cutoff is dropped whole — its events and every projection row — while a recently-active session is
+  untouched and keeps its full append-only history. Retention never truncates a surviving thread's log.
+- **`vacuum`** reclaims the on-disk space a prune frees; run it after a large prune.
+- **`backup <path>`** takes a transactionally consistent online snapshot even while the store is in
+  use. The copy is a complete database — **restore is simply reopening it** (point the workspace at the
+  backup, or copy it back to `sessions.sqlite`). There is no separate restore command because none is
+  needed.
+
+Concurrent processes are serialized by WAL plus a fail-fast busy timeout, so a second client reads only
+committed data and never a torn write; the per-user daemon owns the single writer lease (see
+[The daemon](#the-daemon)).
+
 ## Support bundle
 
 **There is no support-bundle feature.** No command, no function, no archive format. If you need to

@@ -239,8 +239,57 @@ export async function main(deps: CliDeps): Promise<number> {
     return teamCommand(deps, rest);
   }
 
+  if (command === 'maintenance') {
+    return maintenanceCommand(deps, rest);
+  }
+
   deps.stderr(`unknown command: ${command}`);
   return 1;
+}
+
+/**
+ * Session-store maintenance (SS-07): retention pruning, VACUUM, and online backup. Operates on this
+ * workspace's `.qwen-harness/sessions.sqlite`.
+ */
+async function maintenanceCommand(deps: CliDeps, rest: readonly string[]): Promise<number> {
+  const { flags, positional } = parseFlags(rest);
+  const sub = positional[0];
+  const store = openStore(deps);
+  try {
+    if (sub === 'prune') {
+      const days = Number(flags['older-than-days'] ?? '30');
+      if (!Number.isFinite(days) || days <= 0) {
+        deps.stderr('maintenance prune: --older-than-days must be a positive number');
+        return 1;
+      }
+      const result = store.prune({ olderThanMs: days * 24 * 60 * 60 * 1000, now: deps.now() });
+      deps.stdout(
+        `pruned ${result.threadsPruned} session(s) older than ${days}d (${result.eventsPruned} events)`,
+      );
+      return 0;
+    }
+    if (sub === 'vacuum') {
+      store.vacuum();
+      deps.stdout('vacuum complete — freed space reclaimed');
+      return 0;
+    }
+    if (sub === 'backup') {
+      const dest = positional[1];
+      if (dest === undefined) {
+        deps.stderr('maintenance backup: a destination path is required');
+        return 1;
+      }
+      await store.backup(dest);
+      deps.stdout(`backup written to ${dest}`);
+      return 0;
+    }
+    deps.stderr(
+      'maintenance: expected `prune [--older-than-days N]`, `vacuum`, or `backup <path>`',
+    );
+    return 1;
+  } finally {
+    store.close();
+  }
 }
 
 async function runCommand(

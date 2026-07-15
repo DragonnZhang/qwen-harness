@@ -1,3 +1,5 @@
+import { chmodSync } from 'node:fs';
+
 import Database from 'better-sqlite3';
 import {
   HarnessEventSchema,
@@ -84,6 +86,17 @@ export class EventStore {
     this.#db.pragma('busy_timeout = 5000');
 
     migrate(this.#db);
+
+    // A session store holds transcripts and tool output — private by default. Lock the file down to
+    // the owner (0600) on a real path; `:memory:` has no file (SS-07).
+    if (opts.path !== ':memory:') {
+      try {
+        chmodSync(opts.path, 0o600);
+      } catch {
+        // A filesystem that does not support POSIX modes (or a path we cannot chmod) is not fatal;
+        // the store still works. The permission hardening is best-effort on such hosts.
+      }
+    }
   }
 
   get db(): Database.Database {
@@ -92,6 +105,55 @@ export class EventStore {
 
   close(): void {
     this.#db.close();
+  }
+
+  // -------------------------------------------------------------------------
+  // Maintenance: retention, vacuum, backup (SS-07)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Reclaim space left by deleted rows. VACUUM cannot run inside a transaction, so it is its own
+   * operation; a fresh reopen is unnecessary.
+   */
+  vacuum(): void {
+    this.#db.exec('VACUUM');
+  }
+
+  /**
+   * Take a consistent online backup to `destPath`. SQLite's backup API copies a transactionally
+   * consistent snapshot even while the store is in use; the copy is a complete database, openable as a
+   * fresh `EventStore` (that is the restore path — no separate restore method is needed).
+   */
+  async backup(destPath: string): Promise<void> {
+    await this.#db.backup(destPath);
+  }
+
+  /**
+   * Retention at THREAD granularity: drop every thread whose last activity predates the cutoff, along
+   * with all of its rows across the thread-scoped tables, in one transaction. Per-thread history stays
+   * append-only — retention deletes whole old sessions, it never truncates a surviving thread's log.
+   * Content-addressed blobs are shared and are left to a separate GC.
+   */
+  prune(opts: { readonly olderThanMs: number; readonly now: number }): {
+    threadsPruned: number;
+    eventsPruned: number;
+  } {
+    const cutoff = opts.now - opts.olderThanMs;
+    const run = this.#db.transaction((c: number) => {
+      const stale = this.#db.prepare('SELECT id FROM threads WHERE updated_at < ?').all(c) as {
+        id: string;
+      }[];
+      let eventsPruned = 0;
+      for (const { id } of stale) {
+        eventsPruned += this.#db.prepare('DELETE FROM events WHERE thread_id = ?').run(id).changes;
+        this.#db.prepare('DELETE FROM turns WHERE thread_id = ?').run(id);
+        this.#db.prepare('DELETE FROM items WHERE thread_id = ?').run(id);
+        this.#db.prepare('DELETE FROM side_effects WHERE thread_id = ?').run(id);
+        this.#db.prepare('DELETE FROM threads WHERE id = ?').run(id);
+      }
+      return { threadsPruned: stale.length, eventsPruned };
+    });
+    return run(cutoff);
   }
 
   // -------------------------------------------------------------------------

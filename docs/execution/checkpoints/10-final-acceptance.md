@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **101** |
-| IN_PROGRESS | 83 | 38 |
+| **VERIFIED** | 38 | **102** |
+| IN_PROGRESS | 83 | 37 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -329,6 +329,24 @@ defaulting to the frozen 5 GiB) and `packages/background/test/security/output-do
 a task flooding output past the ceiling is FORCE-stopped — cancelled at the runner and settled failed,
 never left running to fill memory or disk — while output under the ceiling keeps running (no false
 positive). The full `pnpm check` passes.
+
+**SS-07 (session-store maintenance) is now VERIFIED — the operations were BUILT.** The remaining rows
+increasingly need feature implementation, not just tests: SS-07's retention/prune, vacuum, and backup
+did not exist. Built them on the `EventStore`: `prune({olderThanMs, now})` (retention at THREAD
+granularity — a stale session is dropped whole across every thread-scoped table in one transaction,
+survivors keep full append-only history), `vacuum()`, and `backup(destPath)` (SQLite online backup;
+restore is simply reopening the copy). Hardened the store to create its file **0600** (owner-only).
+Exposed all three through a new `qwen-harness maintenance prune|vacuum|backup` CLI command. Evidence,
+all genuine: U + P (`packages/storage/test/unit/maintenance.test.ts` — prune drops old sessions and
+keeps recent ones with their history, vacuum runs, an online backup reopens complete; the property
+pins the retention boundary exactly and proves a second prune is a no-op); I
+(`test/integration/backup-restore.test.ts` reopening a real backup with every thread intact, plus
+`apps/cli/test/integration/maintenance.test.ts` driving the real command); F (same backup file
+recovers after the primary DB is deleted, and `test/migrations/rollback.test.ts` proves a failing
+migration rolls back atomically — no partial schema, version unchanged); S
+(`test/security/permissions.test.ts` — the file is 0600 with no group/other bits, WAL + fail-fast busy
+timeout so a second connection reads only committed data); D (`docs/guide/operations.md` maintenance
+section with the runnable commands). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added

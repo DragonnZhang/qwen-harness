@@ -255,7 +255,7 @@ Source: [Claude Code sessions](https://code.claude.com/docs/en/sessions) plus th
 | SS-04 | Crash at every model/tool/approval/storage boundary recovers to a coherent state and never repeats a known-complete side effect. | P,I,F,E | VERIFIED |
 | SS-05 | Intent, start, output, and result identities make side effects idempotent or explicitly indeterminate; destructive indeterminate work requires inspection. | U,P,I,F,S | VERIFIED |
 | SS-06 | JSONL trace/export and deterministic replay can rebuild projections, preserve unknown events, compare runtime decisions, and scrub secrets. | U,P,I,S,E | VERIFIED |
-| SS-07 | Retention, pruning, vacuum, backup, restore, migration rollback, file permissions, and concurrent-process locking are documented and tested. | U,P,I,F,S,D | IN_PROGRESS |
+| SS-07 | Retention, pruning, vacuum, backup, restore, migration rollback, file permissions, and concurrent-process locking are documented and tested. | U,P,I,F,S,D | VERIFIED |
 | SS-08 | A per-user daemon owns the single writer lease. Additional clients attach through its Unix socket or explicitly fork; independent writers cannot interleave a thread, and cwd/worktree changes preserve canonical ownership. | U,P,I,F,E | IN_PROGRESS |
 
 ## N. TUI, interactive CLI, and headless automation
