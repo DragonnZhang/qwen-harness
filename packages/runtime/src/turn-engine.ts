@@ -189,6 +189,14 @@ export interface TurnHooks {
     toolName: string;
     ok: boolean;
   }): Promise<void | { readonly stopContinuation?: boolean }>;
+
+  /**
+   * Fire a lifecycle hook event that is not tied to a single tool call — e.g. `PostToolBatch` after a
+   * round's tools all settle. Optional and best-effort: the engine stays decoupled from the concrete
+   * hook catalog (the event is a plain string), and an app that wires no lifecycle hooks simply omits
+   * it. Never blocks or alters the turn; a lifecycle hook observes, it does not gate (HK-01).
+   */
+  fireLifecycle?(event: string, data?: Readonly<Record<string, unknown>>): Promise<void>;
 }
 
 /**
@@ -439,7 +447,14 @@ export class TurnEngine {
             signal,
             conversation,
           );
+          const batchSize = calls.length;
           calls = [];
+
+          // The whole round's tools have settled — fire PostToolBatch (HK-01). Observe-only: it never
+          // gates the turn, so it runs regardless of whether the turn is about to stop.
+          if (this.#deps.hooks?.fireLifecycle) {
+            await this.#deps.hooks.fireLifecycle('PostToolBatch', { tools: batchSize });
+          }
 
           if (phase.stop && phase.kind === 'budget') {
             this.#endTurn(base, machine, 'budget-exhausted', phase.reason);

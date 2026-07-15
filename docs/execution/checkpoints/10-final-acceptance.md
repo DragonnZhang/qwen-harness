@@ -510,8 +510,9 @@ The audit found the gaps cluster into a small number of systemic causes, not 140
    early tool start while streaming (TL-09), turn steering (RT-07), `previous_response_id`
    continuation (PV-08), output-length continuation (ER-01), automatic post-turn memory extraction
    (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)
-   — audited 2026-07-16: only ~7 of the 30 events actually FIRE from the app (PreToolUse, PostToolUse,
-   PostToolUseFailure, SessionEnd, Stop, UserPromptSubmit, InstructionsLoaded); the other ~23
+   — audited 2026-07-16: originally only ~7 of the 30 events fired. A reusable `fireLifecycle` seam was
+   added to `TurnHooks` (optional, so no fake breaks) and `SessionStart` + `PostToolBatch` are now
+   wired and proven by `evals/e2e/hook-lifecycle.test.ts` (9/30). The remaining ~21
    (SessionStart, Setup, Notification, Permission*, Subagent*, Pre/PostCompact, Task*, Elicitation*,
    ConfigChange, Worktree*, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, PostToolBatch,
    TeammateIdle, StopFailure) are defined and engine-dispatchable but have NO firing site — the exact

@@ -634,6 +634,12 @@ async function runCommand(
       }
     }
 
+    // A fresh (non-resumed) run begins a session; fire SessionStart symmetrically with SessionEnd so a
+    // hook can set up per-session state (HK-01).
+    if (hooks !== null && resumeThreadId === null && pending === null) {
+      await hooks.fire('SessionStart', { data: { threadId: String(threadId) } });
+    }
+
     if (hooks !== null && pending === null) {
       const submitted = await hooks.fire('UserPromptSubmit', { data: { chars: userText.length } });
       if (submitted.blocked) {

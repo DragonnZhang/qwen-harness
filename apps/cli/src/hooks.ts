@@ -279,6 +279,11 @@ export function createHookRuntime(opts: {
         // whether the turn continues to another model round (HK-05, `resultDurable`).
         return { stopContinuation: result.stopped };
       },
+      fireLifecycle: async (event, data) => {
+        // Observe-only lifecycle events (e.g. PostToolBatch). The engine passes the event name as a
+        // plain string; we run it through the real engine so a configured hook actually fires (HK-01).
+        await run(event as HookEvent, { ...(data ? { data } : {}) });
+      },
     },
   };
 }
