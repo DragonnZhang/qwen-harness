@@ -202,7 +202,7 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 | BG-02 | Background work returns a unique task ID immediately and exposes status, owner, permission context, incremental output, output reference, stop, await, and completion notification. | U,P,I,F,T | IN_PROGRESS |
 | BG-03 | Support local shell, local agent, authenticated remote agent, in-process teammate, local workflow, MCP monitor, and Dream/consolidation through one lifecycle; remote behavior uses the frozen reference-peer contract. | U,I,F,S,E | IN_PROGRESS |
 | BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | VERIFIED |
-| BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | IN_PROGRESS |
+| BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | VERIFIED |
 | BG-06 | `/tasks` and TUI panels can list, inspect, tail, foreground/background, stop, and attribute background work without blocking the main input loop. | T,E | REQUIRED |
 | BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | IN_PROGRESS |
 | CR-01 | Cron parser supports standard five-field wildcard, step, range, list, and DOM/DOW OR semantics with local timezone and precise validation errors. | U,P,I | VERIFIED |

@@ -120,6 +120,12 @@ export interface BackgroundManagerOptions {
   /** Optional durable sink; when present, task start/settle are recorded through storage (BG-04). */
   readonly sink?: BackgroundEventSink;
   readonly foregroundConcurrency?: number;
+  /**
+   * The output byte ceiling before a task is hard-stopped as a runaway (BG-05). Defaults to
+   * {@link OUTPUT_HARD_STOP_BYTES}; injectable so the DoS-resistance behavior is testable without
+   * actually producing gigabytes.
+   */
+  readonly hardStopBytes?: number;
 }
 
 export class BackgroundManager {
@@ -128,6 +134,7 @@ export class BackgroundManager {
   readonly #runner: Runner;
   readonly #sink: BackgroundEventSink | undefined;
   readonly #limit: number;
+  readonly #hardStopBytes: number;
   readonly #tasks = new Map<string, TaskRecord>();
   /** FIFO order of queued foreground task ids, admitted as slots free (BG-05). */
   readonly #queue: string[] = [];
@@ -139,6 +146,7 @@ export class BackgroundManager {
     this.#runner = opts.runner;
     this.#sink = opts.sink;
     this.#limit = opts.foregroundConcurrency ?? FOREGROUND_CONCURRENCY;
+    this.#hardStopBytes = opts.hardStopBytes ?? OUTPUT_HARD_STOP_BYTES;
   }
 
   get notifications(): NotificationQueue {
@@ -312,7 +320,7 @@ export class BackgroundManager {
       task.outputWarned = true;
       this.#notify(task, 'status', `task ${task.id} output exceeded ${OUTPUT_WARN_BYTES} bytes`);
     }
-    if (task.outputBytes >= OUTPUT_HARD_STOP_BYTES) {
+    if (task.outputBytes >= this.#hardStopBytes) {
       task.control?.cancel();
       this.#settle(task, 'failed', {
         ok: false,

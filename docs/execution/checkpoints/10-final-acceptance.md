@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **100** |
-| IN_PROGRESS | 83 | 39 |
+| **VERIFIED** | 38 | **101** |
+| IN_PROGRESS | 83 | 38 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -317,6 +317,18 @@ binding reflects the last op while every other field stays byte-identical); I + 
 real git: binding a worktree to a claimed task leaves the task's owner/status untouched; then a crash
 orphans the checkout and the task is entirely unaffected, while completing the task never disturbs the
 worktree binding — the two recover on independent tracks). The full `pnpm check` passes.
+
+**BG-05 (background limits/concurrency/watchdog) is now VERIFIED — the S class added over deep
+existing coverage.** The `BackgroundManager` already had U (four-way foreground concurrency + FIFO
+queue, the 30s input watchdog and 5-minute blocked transition, output warn/preview, cancellation), P
+(an fc.assert idempotency property — exactly one settlement per triggered task over generated
+sequences), I (`test/integration/lifecycle.test.ts`), and F (cancel-and-cleanup, watchdog trip). The
+missing S — resource-exhaustion resistance — is now real: the output hard-stop ceiling was a fixed 5
+GiB constant, untestable without producing gigabytes, so it was made injectable (`hardStopBytes`,
+defaulting to the frozen 5 GiB) and `packages/background/test/security/output-dos.test.ts` proves that
+a task flooding output past the ceiling is FORCE-stopped — cancelled at the runner and settled failed,
+never left running to fill memory or disk — while output under the ceiling keeps running (no false
+positive). The full `pnpm check` passes.
 
 **AG-07 (team protocol message set) is now VERIFIED.** Its gap was a `U` proving the message SET is
 complete — `protocol.test.ts` covers the AG-08 correlation tracker, not the set. Added
