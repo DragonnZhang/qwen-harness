@@ -509,10 +509,17 @@ The audit found the gaps cluster into a small number of systemic causes, not 140
    WebFetch/WebSearch (TL-13), a destructive-git tool (TL-06), durable tool-output offload (TL-10),
    early tool start while streaming (TL-09), turn steering (RT-07), `previous_response_id`
    continuation (PV-08), output-length continuation (ER-01), automatic post-turn memory extraction
-   (MM-03), session rename/archive/delete + picker (SS-02, UI-10), storage retention/vacuum/backup
-   (SS-07), 24 of the 30 hook events actually dispatching (HK-01), non-command hook handler forms
+   (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)
+   — audited 2026-07-16: only ~7 of the 30 events actually FIRE from the app (PreToolUse, PostToolUse,
+   PostToolUseFailure, SessionEnd, Stop, UserPromptSubmit, InstructionsLoaded); the other ~23
+   (SessionStart, Setup, Notification, Permission*, Subagent*, Pre/PostCompact, Task*, Elicitation*,
+   ConfigChange, Worktree*, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, PostToolBatch,
+   TeammateIdle, StopFailure) are defined and engine-dispatchable but have NO firing site — the exact
+   "emitted-but-not-wired" defect `events.ts` warns against, and the largest single remaining feature
+   (it also gates HK-02 and GT-06's worktree hooks)**, non-command hook handler forms
    (HK-02), the comprehensive audit record (SC-03), remote reference-peer backends (CR-06, BG-03/07),
-   resumable subagents (AG-04), and the `/rewind` checkpoint system (UI-18).
+   resumable subagents (AG-04), and the `/rewind` checkpoint system (UI-18). (Storage
+   retention/vacuum/backup — formerly listed here — is now BUILT and VERIFIED as SS-07.)
 6. **CI runs only the spec-freeze check**, not the full gate suite (QL-02); the architecture gate
    script itself has no test (QL-03).
 
