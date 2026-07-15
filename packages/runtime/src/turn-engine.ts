@@ -521,6 +521,15 @@ export class TurnEngine {
           }
           conversation.length = 0;
           conversation.push(...prep.items);
+
+          // Compaction just ran (threshold or overflow) — fire PostCompact so a hook can observe that
+          // the transcript was summarized (HK-01). Observe-only; the leaner conversation is already
+          // adopted above.
+          if (prep.compacted && this.#deps.hooks?.fireLifecycle) {
+            await this.#deps.hooks.fireLifecycle('PostCompact', {
+              ...(prep.trigger ? { trigger: prep.trigger } : {}),
+            });
+          }
         }
 
         sink.append({

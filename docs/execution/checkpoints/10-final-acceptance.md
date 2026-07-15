@@ -512,9 +512,10 @@ The audit found the gaps cluster into a small number of systemic causes, not 140
    (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)
    — audited 2026-07-16: originally only ~7 of the 30 events fired. A reusable `fireLifecycle` seam was
    added to `TurnHooks` (optional, so no fake breaks) and `SessionStart`, `PostToolBatch`,
-   `PermissionRequest`, `PermissionDenied` are now wired and proven by
-   `evals/e2e/hook-lifecycle.test.ts` (11/30). The remaining ~19
-   (Setup, Notification, Subagent*, Pre/PostCompact, Task*, Elicitation*,
+   `PermissionRequest`, `PermissionDenied` (proven by `evals/e2e/hook-lifecycle.test.ts`) and
+   `PostCompact` (proven by `apps/cli/test/integration/compaction.test.ts`) are now wired (12/30). The
+   remaining ~18
+   (Setup, Notification, Subagent*, PreCompact, Task*, Elicitation*,
    ConfigChange, Worktree*, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, PostToolBatch,
    TeammateIdle, StopFailure) are defined and engine-dispatchable but have NO firing site — the exact
    "emitted-but-not-wired" defect `events.ts` warns against, and the largest single remaining feature

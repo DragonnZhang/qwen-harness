@@ -157,6 +157,8 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
       offloadThresholdChars: 1500,
     });
 
+    // A no-op hook seam with a lifecycle spy, to prove PostCompact fires when compaction runs (HK-01).
+    const lifecycle: string[] = [];
     const engine = new TurnEngine({
       provider,
       tools: bigOutputExecutor(2000),
@@ -164,6 +166,13 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
       ids,
       clock,
       context,
+      hooks: {
+        preToolUse: async () => ({ blocked: false, reason: null }),
+        postToolUse: async () => {},
+        fireLifecycle: async (event) => {
+          lifecycle.push(event);
+        },
+      },
     });
     const result = await engine.run({
       threadId: THREAD,
@@ -185,6 +194,8 @@ describe('compaction golden path (CX-01..CX-05) through the real TurnEngine', ()
       .map((e) => e.payload)
       .filter((p) => p.type === 'item-appended' && p.item.type === 'compaction');
     expect(compactions.length).toBeGreaterThanOrEqual(2); // boundary marker + final summary item
+    // ...and the lifecycle hook fired for it (HK-01: PostCompact now dispatches).
+    expect(lifecycle).toContain('PostCompact');
 
     // The model actually received the summary after compaction: some request input carries a message
     // that preserves goal, constraints, tasks, and active files (CX-03/CX-05).
