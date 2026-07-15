@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **88** |
-| IN_PROGRESS | 83 | 51 |
+| **VERIFIED** | 38 | **89** |
+| IN_PROGRESS | 83 | 50 |
 | REQUIRED | 57 | 39 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -229,7 +229,17 @@ U was already real (`execution.test.ts` inline/forked/narrowing/managed-ceiling)
 end-to-end `run --skill` invocation in `evals/e2e/skills.test.ts` (the skill body is loaded into the
 model prompt — inline result semantics).
 
-The remaining 90 rows are still genuinely not verifiable today — a required evidence class is absent
+**MC-07 (OAuth 2.0 + PKCE) is now VERIFIED** — gaps were P, F, and a real OAuth I (the survey's claimed
+I was actually MC-06's `list_changed` refresh, not OAuth). Added `packages/mcp/src/oauth-resilience.test.ts`
+(P — a 1000-run property: the S256 `code_challenge` is the URL-safe digest of any verifier,
+deterministic, never the verifier itself; F — a refresh with an invalid/revoked token FAILS visibly,
+never silently returning a stale token) and `packages/mcp/test/integration/oauth-flow.test.ts` (I — the
+full auth-code + PKCE exchange through the REAL `SecretStore` token-store hierarchy: the token persists
+and a FRESH client instance reuses it without re-authorizing). U (`oauth.test.ts`), S (`oauth-csrf.test.ts`
+forged-state rejection), and E (`evals/e2e/mcp.test.ts` — real second-process OAuth with real PKCE/state/
+exchange) were already real. The MCP cluster is now fully VERIFIED.
+
+The remaining 89 rows are still genuinely not verifiable today — a required evidence class is absent
 or the behavior is unimplemented. This document records which, and why, so the gap is a work-list.
 
 ## What IS done (not diminished by the above)
