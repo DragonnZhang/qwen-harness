@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **113** |
-| IN_PROGRESS | 83 | 32 |
+| **VERIFIED** | 38 | **114** |
+| IN_PROGRESS | 83 | 31 |
 | REQUIRED | 57 | 33 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -647,6 +647,19 @@ each capped with a named reason). The other detectors are covered by existing te
 same behavior: repeated-identical (budget.test.ts + evals/e2e/termination.test.ts), no-progress
 (budget.test.ts), runaway-children (subagent.property.test.ts — the `(limit+1)`th spawn is refused
 with a typed `SubagentError`, the injected-failure path). Full `pnpm check` passes.
+
+**GT-06 (worktree lifecycle is tested) is now VERIFIED.** The row asks that create/remove/keep,
+config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior be tested;
+the ops (`createWorktree`/`removeWorktree`) were implemented and the happy path covered by
+`worktree.test.ts`. Added `packages/worktrees/test/integration/gt06-lifecycle.test.ts` for the
+edges: F (a non-Git directory fails with a typed `not-a-repo` `WorktreeError`, not a raw crash),
+config inclusion (a hostile global git config aliasing `status` to a failing command is NEUTRALIZED —
+the worktree helper pins `GIT_CONFIG_GLOBAL=/dev/null`, so `isWorktreeDirty` still runs real
+`git status`), and P (a fast-check property that any 2–4 distinct slugs produce that many coexisting
+worktrees without collision). Combined with the existing U (`slug.test.ts` — pure slug/path-traversal
+validation), I (`worktree.test.ts` — real-git create/remove/dirty-refusal/collision), and E
+(`evals/e2e/team.test.ts` — REAL teammate processes each work in their own git worktree), GT-06 has
+its full [U,P,I,F,E]. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

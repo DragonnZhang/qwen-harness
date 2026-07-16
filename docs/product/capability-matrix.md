@@ -224,7 +224,7 @@ Sources: [s18](https://learn.shareai.run/en/s18/) and [Claude Code worktrees](ht
 | GT-03 | Persist original cwd/branch/head, worktree path/branch/base, owner/session, and recovery state. | U,I,F | VERIFIED |
 | GT-04 | Keep and remove are explicit. Removal refuses dirty/unpushed work by default; discard requires exact approval and produces an audit event. | U,I,S,T | IN_PROGRESS |
 | GT-05 | Task-worktree binding is optional metadata and never silently changes task state; agent task ownership and workspace ownership remain independently recoverable. | U,P,I,F | VERIFIED |
-| GT-06 | Create/remove/keep hooks, config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior are tested. | U,P,I,F,E | IN_PROGRESS |
+| GT-06 | Create/remove/keep hooks, config inclusion, concurrent worktrees, cleanup after failure, and non-Git error behavior are tested. | U,P,I,F,E | VERIFIED |
 
 ## L. MCP and external extension
 
