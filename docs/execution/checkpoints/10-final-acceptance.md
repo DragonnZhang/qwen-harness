@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **114** |
+| **VERIFIED** | 38 | **115** |
 | IN_PROGRESS | 83 | 31 |
-| REQUIRED | 57 | 33 |
+| REQUIRED | 57 | 32 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -660,6 +660,28 @@ worktrees without collision). Combined with the existing U (`slug.test.ts` — p
 validation), I (`worktree.test.ts` — real-git create/remove/dirty-refusal/collision), and E
 (`evals/e2e/team.test.ts` — REAL teammate processes each work in their own git worktree), GT-06 has
 its full [U,P,I,F,E]. Full `pnpm check` passes.
+
+**SC-01 (adversarial suite covers 9 vectors) is now VERIFIED**, with the last untested vector —
+shell indirection — filled this session. The suite is an ensemble of dedicated adversarial tests, one
+(or more) per vector; the complete mapping, so nothing is claimed without a concrete test:
+
+| Vector | Defense test(s) |
+|---|---|
+| malicious repository instructions | `packages/skills/test/security/{skill-escape,untrusted-skill}.test.ts` (instructions/skills are untrusted context, cannot grant a tool) |
+| secret exfiltration | `packages/storage/test/security/{redaction,audit-redaction}.test.ts`, `memory/test/security/no-secrets.test.ts`, `apps/cli/test/security/telemetry-redaction.test.ts` |
+| path / symlink escape | `packages/tool-worker/test/security/path-escape.test.ts` (SC-01), `sandbox-linux/test/security/filesystem.test.ts`, `evals/e2e/permissions.test.ts` (real symlink→credential escape refused) |
+| shell indirection | `packages/tool-worker/test/security/shell-indirection.test.ts` (SC-01) — NEW: `;` and `$()` in an argv are literal, no `/bin/sh -c`, injected side effect never runs |
+| package / Git hooks | `packages/worktrees/test/integration/gt06-lifecycle.test.ts` (poison global git config neutralized), worktree `GIT_CONFIG_GLOBAL=/dev/null` |
+| MCP abuse | `packages/mcp/test/security/{mcp-trust,malicious-tool,oauth-csrf}.test.ts` |
+| ANSI/OSC spoofing | `packages/protocol/src/sanitize.property.test.ts` + `sanitize.test.ts` |
+| approval confusion | `apps/tui/test/unit/approval-dialog.test.ts`, `packages/policy/src/grants.test.ts` (approval binds to the normalized action), `evals/e2e/permissions.test.ts` (forged approval screen refused) |
+| resource exhaustion | `packages/background/test/security/output-dos.test.ts`, `packages/runtime/test/security/dos-bounds.test.ts`, `sandbox-linux/test/security/process-resources.test.ts` |
+
+Classes: P (`sanitize.property`, `sandbox-fuzz.property`, `resolve-scoped.property` — adversarial
+properties), I (`sandbox-linux/test/security/real-sandbox.test.ts`, SC-01), S (the per-vector security
+tests above), E (`evals/e2e/permissions.test.ts` — the SAME goal run in all four profiles with four
+documented attacks — credential read, symlink escape, network enable, approval forge — each refused at
+policy/ceiling/sandbox). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
