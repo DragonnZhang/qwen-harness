@@ -610,10 +610,16 @@ durable work re-intersects with CURRENT managed at fire), S (NEW
 managed policies, a captured `yolo` ceiling never escapes current hard policy), E
 (`evals/e2e/team.test.ts` — under managed `maxProfile: plan` a REAL teammate process is clamped to
 `plan` and its sandboxed shell denied, so a teammate can never exceed the lead/managed ceiling).
-(Observed but not fixed here: a durable RECURRING job reconstructed by a fresh `Scheduler` did not
-fire in a restart-then-fire test, while the same job fires before restart and one-shot durability
-round-trips fine — worth a dedicated look; PS-08's durable clause is proven via the fire-time
-re-intersection above, which does not depend on it.) Full `pnpm check` passes.
+(Observed but NOT fixed here, and flagged for a dedicated look: after a "restart" — a fresh `Scheduler`
+reconstructing durable jobs from the same event log — job FIRING behaves unexpectedly in a black-box
+probe. A recurring job fired ~one interval later than the same job fires before a restart, and a
+past-due one-shot did not surface in `due()` at all. `foldRecords` sets a never-fired job's cursor to
+its `createdAt`, so this is subtler than the fold and needs internal-state inspection to pin down.
+Scope: this is a fire-TIMING question after reconstruction; CR-04 (durable DEFINITIONS survive a
+restart) is unaffected — definitions reconstruct correctly (list/get/ceiling verified) — and PS-08's
+durable clause is proven via the fire-time re-intersection above, which does not depend on
+reconstruction. Left as an explicit open item rather than silently worked around.) Full `pnpm check`
+passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
