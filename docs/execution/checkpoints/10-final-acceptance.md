@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **115** |
+| **VERIFIED** | 38 | **116** |
 | IN_PROGRESS | 83 | 31 |
-| REQUIRED | 57 | 32 |
+| REQUIRED | 57 | 31 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -682,6 +682,22 @@ properties), I (`sandbox-linux/test/security/real-sandbox.test.ts`, SC-01), S (t
 tests above), E (`evals/e2e/permissions.test.ts` — the SAME goal run in all four profiles with four
 documented attacks — credential read, symlink escape, network enable, approval forge — each refused at
 policy/ceiling/sandbox). Full `pnpm check` passes.
+
+**MC-08 (server-to-agent reverse channel) is now VERIFIED** — implemented-but-under-tested. The
+`ServerRequestRouter` (`packages/mcp/src/server-requests.ts`) routes every server→client request
+through injected, policy-aware callbacks and sanitizes server-authored text; `McpClient`'s
+`#handleNotification` is the attributed wake-up channel. Evidence: U (`server-requests.test.ts` —
+elicitation routed through the channel with ANSI stripped from server text), I
+(`test/integration/in-process-roundtrip.test.ts` — the real client discovers resources/prompts and
+refreshes on a server `list_changed` notification through a real transport), F (NEW
+`packages/mcp/src/server-request-failures.test.ts` — an arbitrary/unknown reverse method, an
+elicitation with no channel, and a policy-denied elicitation are each refused with a typed `McpError`
+and the elicitation callback is never reached; `roots` with no provider returns a safe empty list),
+S (`server-requests.test.ts` — a server cannot enable a capability the policy gate refuses, and
+server-driven sampling is refused by default), E (`evals/e2e/mcp.test.ts` golden path 7 — a REAL
+second-process HTTP server pushes a reverse notification and a malicious server is denied). "Reverse
+permission requests" is the elicitation path; "wake-up channels" is the server-initiated notification
+handler. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
