@@ -24,6 +24,38 @@ import { normalizeRound, type NormalizedRound, type NormalizedToolCall } from '.
 import { TurnMachine } from './turn-machine.ts';
 
 /**
+ * The canonical phase order of a single turn (RT-05). Every phase below is realized by this engine
+ * except `input-hooks`, which the app (the CLI) fires BEFORE it calls `run()`:
+ *   1.  `input-hooks`          — UserPromptSubmit etc., fired by the app before `run()` (apps/cli).
+ *   2.  `queued-notifications` — `run()`: drain the injected `NotificationDrain` and surface each
+ *                                summary to the model as context, once, at turn start.
+ *   3.  `context-assembly`     — `#drive`: `this.#deps.context.prepare()` before each model round.
+ *   4.  `model`                — `#drive` → `#streamWithRetry` → `provider.stream()`.
+ *   5.  `recovery`             — `#streamWithRetry`: the bounded transient-fault retry (`decideRetry`).
+ *   6.  `permission-hooks`     — `#runOneCall`: the PreToolUse hook + policy `evaluate` (allow/ask/deny).
+ *   7.  `tool-scheduling`      — `#runToolCalls`: `planBatches` → serial / parallel execution.
+ *   8.  `post-hooks`           — `#runOneCall`/`#runParallelBatch`: PostToolUse, then PostToolBatch.
+ *   9.  `results`              — the durable `tool-result` items paired back to the model by call ID.
+ *   10. `stop-hooks`           — `#fireStop`: the `Stop` lifecycle, after `turn-ended` is persisted;
+ *                                fired from EVERY terminal path (completion, cancellation, failure).
+ *
+ * This is the single source of truth for the order; a test asserts the engine's observable lifecycle
+ * events stay consistent with it (RT-05).
+ */
+export const TURN_ORDER = [
+  'input-hooks',
+  'queued-notifications',
+  'context-assembly',
+  'model',
+  'recovery',
+  'permission-hooks',
+  'tool-scheduling',
+  'post-hooks',
+  'results',
+  'stop-hooks',
+] as const;
+
+/**
  * The turn engine: the actual agent loop, expressed over INJECTED interfaces so it touches no host
  * capability itself (RT-08). An app supplies the concrete provider, tool executor, and event sink;
  * the engine coordinates them and drives the state machine and budgets.
@@ -233,6 +265,22 @@ export interface ContextManager {
   }): Promise<ContextPreparation>;
 }
 
+/**
+ * A source of notifications that were queued while the user was away (a background task settled, a
+ * scheduled run finished). Injected as an ABSTRACTION so runtime does not depend on the
+ * `@qwen-harness/background` package — that would be a layering violation. Observe-only: draining
+ * surfaces each summary to the model as context at turn start; it never gates or changes any decision.
+ */
+export interface NotificationDrain {
+  /** Remove and return everything queued so far. Called exactly once, at the start of a `run()` turn. */
+  drain(): readonly QueuedNotification[];
+}
+
+export interface QueuedNotification {
+  /** A human-readable one-line summary, surfaced to the model as away-time context. */
+  readonly summary: string;
+}
+
 export interface TurnEngineDeps {
   readonly provider: ModelProvider;
   readonly tools: ToolExecutor;
@@ -257,6 +305,13 @@ export interface TurnEngineDeps {
    * transcript growth (CX-01..CX-06). Absent means the full conversation is always sent.
    */
   readonly context?: ContextManager;
+  /**
+   * Optional. When present, `run()` drains it ONCE at turn start (phase 2, `queued-notifications`)
+   * and surfaces each summary to the model as context, so work that completed while the user was away
+   * is visible on the next turn. Observe-only and drained only in `run()` — a `resume()` continues a
+   * mid-flight turn and must not re-drain. Absent means no notifications are surfaced.
+   */
+  readonly notifications?: NotificationDrain;
 }
 
 export interface RunTurnInput {
@@ -368,6 +423,25 @@ export class TurnEngine {
       { type: 'message', role: 'user', text: input.userText },
     ];
 
+    // Phase 2 (queued-notifications): drain anything that landed while the user was away and surface
+    // each summary to the model as context, BEFORE the first context-assembly/model round. This lives
+    // in run() — NOT in #drive — deliberately: a resume() continues a mid-flight (awaiting-approval)
+    // turn, and re-draining there would double-surface notifications, so resume() never drains.
+    if (this.#deps.notifications) {
+      const drained = this.#deps.notifications.drain();
+      for (const n of drained) {
+        conversation.push({
+          type: 'message',
+          role: 'user',
+          text: 'Notification (while you were away): ' + n.summary,
+        });
+      }
+      // Observe-only: fire only when something was actually drained; it never gates the turn.
+      if (drained.length > 0) {
+        await this.#deps.hooks?.fireLifecycle?.('QueuedNotifications', { count: drained.length });
+      }
+    }
+
     return this.#drive({
       base,
       machine,
@@ -429,7 +503,7 @@ export class TurnEngine {
     try {
       for (;;) {
         if (signal.aborted) {
-          this.#cancel(base, machine);
+          await this.#cancel(base, machine);
           terminalReason = 'user-cancelled';
           break;
         }
@@ -457,19 +531,19 @@ export class TurnEngine {
           }
 
           if (phase.stop && phase.kind === 'budget') {
-            this.#endTurn(base, machine, 'budget-exhausted', phase.reason);
+            await this.#endTurn(base, machine, 'budget-exhausted', phase.reason);
             terminalReason = phase.reason;
             break;
           }
           if (phase.stop && phase.kind === 'cancelled') {
-            this.#cancel(base, machine);
+            await this.#cancel(base, machine);
             terminalReason = 'user-cancelled';
             break;
           }
           if (phase.stop && phase.kind === 'hook-stop') {
             // A PostToolUse hook stopped continuation. The tool result is already durable; the turn
             // ends cleanly (completed) instead of driving another model round (HK-05).
-            this.#endTurn(base, machine, 'completed', 'hook-stop');
+            await this.#endTurn(base, machine, 'completed', 'hook-stop');
             terminalReason = 'hook-stop';
             break;
           }
@@ -482,7 +556,7 @@ export class TurnEngine {
 
           const health = budget.afterModelRound({ madeProgress: true });
           if (health.stop) {
-            this.#endTurn(base, machine, 'budget-exhausted', health.reason);
+            await this.#endTurn(base, machine, 'budget-exhausted', health.reason);
             terminalReason = health.reason;
             break;
           }
@@ -491,7 +565,7 @@ export class TurnEngine {
         // --- model phase ---------------------------------------------------------------------
         const budgetCheck = budget.beforeModelCall();
         if (budgetCheck.stop) {
-          this.#endTurn(base, machine, 'budget-exhausted', budgetCheck.reason);
+          await this.#endTurn(base, machine, 'budget-exhausted', budgetCheck.reason);
           terminalReason = budgetCheck.reason;
           break;
         }
@@ -515,7 +589,7 @@ export class TurnEngine {
             signal,
           });
           if (signal.aborted) {
-            this.#cancel(base, machine);
+            await this.#cancel(base, machine);
             terminalReason = 'user-cancelled';
             break;
           }
@@ -571,7 +645,7 @@ export class TurnEngine {
 
         // No tool calls -> the model is done talking. Natural completion.
         if (round.toolCalls.length === 0) {
-          this.#endTurn(base, machine, 'completed', 'natural-completion');
+          await this.#endTurn(base, machine, 'completed', 'natural-completion');
           terminalReason = 'natural-completion';
           break;
         }
@@ -602,7 +676,7 @@ export class TurnEngine {
       if (signal.aborted) {
         // A cancellation surfaces as a thrown abort from the provider stream or the sandbox. It is
         // a cancellation, not an internal error, and it still names a termination reason (RT-04).
-        if (!machine.isTerminal) this.#cancel(base, machine);
+        if (!machine.isTerminal) await this.#cancel(base, machine);
         terminalReason = 'user-cancelled';
       } else {
         if (!machine.isTerminal) {
@@ -624,6 +698,7 @@ export class TurnEngine {
           ...base,
           payload: { type: 'turn-ended', state: 'failed', reason: 'internal-error' },
         });
+        await this.#fireStop('failed', 'internal-error');
       }
     }
 
@@ -1392,7 +1467,7 @@ export class TurnEngine {
   }
 
   /** Cancellation is a first-class ending with a named reason, never a silent stop (RT-06). */
-  #cancel(base: PersistBase, machine: TurnMachine): void {
+  async #cancel(base: PersistBase, machine: TurnMachine): Promise<void> {
     if (machine.isTerminal) return;
     // `cancelled` is reachable from every non-terminal state, so cancellation never has to route
     // through an intermediate state that a given turn might not legally be in.
@@ -1402,21 +1477,43 @@ export class TurnEngine {
       ...base,
       payload: { type: 'turn-ended', state: 'cancelled', reason: 'user-cancelled' },
     });
+    await this.#fireStop('cancelled', 'user-cancelled');
   }
 
-  #endTurn(
+  async #endTurn(
     base: PersistBase,
     machine: TurnMachine,
     state: 'completed' | 'failed' | 'cancelled' | 'blocked' | 'budget-exhausted',
     // A TerminationReason, not a free string: the compiler now REFUSES an untyped reason here, which
     // is exactly RT-04's guarantee that every turn ends with a typed, enumerable reason.
     reason: TerminationReason,
-  ): void {
+  ): Promise<void> {
     if (!machine.isTerminal) machine.terminate(state, reason);
     this.#deps.sink.append({
       ...base,
       payload: { type: 'turn-ended', state, reason },
     });
+    await this.#fireStop(state, reason);
+  }
+
+  /**
+   * Phase 10 (stop-hooks): fire the Stop lifecycle AFTER the turn is durably ended. Called from EVERY
+   * terminal path — natural/budget/hook completion (`#endTurn`), user cancellation (`#cancel`), and
+   * internal-error failure (the `#drive` catch) — so `stop-hooks` is genuinely the last phase of every
+   * turn (RT-05). Observe-only: the machine is already terminal and `turn-ended` is already persisted,
+   * so a Stop hook can neither change `state`/`reason` nor — guarded here — throw back into the turn.
+   */
+  async #fireStop(
+    state: 'completed' | 'failed' | 'cancelled' | 'blocked' | 'budget-exhausted',
+    reason: TerminationReason,
+  ): Promise<void> {
+    if (this.#deps.hooks?.fireLifecycle) {
+      try {
+        await this.#deps.hooks.fireLifecycle('Stop', { state, reason });
+      } catch {
+        // A lifecycle hook observes; a throw from it must never corrupt an already-completed turn.
+      }
+    }
   }
 }
 

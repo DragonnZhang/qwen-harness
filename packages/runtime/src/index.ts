@@ -19,7 +19,7 @@ export type { BudgetLimits, BudgetSnapshot, BudgetVerdict } from './budget.ts';
 export { RoundNormalizer, normalizeRound } from './normalizer.ts';
 export type { NormalizedRound, NormalizedToolCall } from './normalizer.ts';
 
-export { TurnEngine } from './turn-engine.ts';
+export { TurnEngine, TURN_ORDER } from './turn-engine.ts';
 export type {
   TurnEngineDeps,
   RunTurnInput,
@@ -36,4 +36,6 @@ export type {
   ApprovalRisk,
   ContextManager,
   ContextPreparation,
+  NotificationDrain,
+  QueuedNotification,
 } from './turn-engine.ts';

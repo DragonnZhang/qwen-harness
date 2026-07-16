@@ -31,7 +31,7 @@ Sources: [s01](https://learn.shareai.run/en/s01/), [s20](https://learn.shareai.r
 | RT-02 | One model output may contain multiple function calls; every call and result remains ordered, paired by identity, and recoverable. | U,P,I,F | VERIFIED |
 | RT-03 | An explicit state machine represents preparing, streaming, approval, execution, background wait, compaction, recovery, steering, cancellation, completion, failure, blocking, and budget exhaustion. | U,P,I,F | VERIFIED |
 | RT-04 | Turn count, model/tool/token/time/cost/retry/blocking limits and no-progress detection produce typed termination reasons. | U,P,F,E | VERIFIED |
-| RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | IN_PROGRESS |
+| RT-05 | The comprehensive order is input hooks -> queued notifications -> context assembly -> model -> recovery -> permission/hooks -> tool scheduling -> post hooks -> results -> stop hooks. | U,I,E | VERIFIED |
 | RT-06 | Cancellation propagates through one abort tree to model streams, tools, process groups, background work, MCP, subagents, teams, and UI. | I,F,T,E | REQUIRED |
 | RT-07 | Runtime supports steering input during a turn without corrupting current tool/result pairing, plus interrupt and resume. | U,I,T,E | REQUIRED |
 | RT-08 | Runtime is headless and deterministic under injected provider, tool, clock, ID, storage, policy, and notification interfaces. | U,I,E | VERIFIED |

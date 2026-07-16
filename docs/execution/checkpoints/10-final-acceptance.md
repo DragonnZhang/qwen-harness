@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **124** |
-| IN_PROGRESS | 83 | 25 |
+| **VERIFIED** | 38 | **125** |
+| IN_PROGRESS | 83 | 24 |
 | REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -27,7 +27,7 @@ assessment, not a completion claim; incomplete items are marked incomplete.
 
 | # | Item | Status | Evidence / why |
 |---|---|---|---|
-| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 121/178** | 57 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
+| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 125/178** | 53 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
 | 2 | 10 golden paths pass | **DONE** | All ten cross-capability golden paths run as committed executed tests (this file, "All ten … golden paths pass"; `evals/e2e/*`). |
 | 3 | `pnpm check` passes clean from a committed tree | **DONE (continuously)** | Verified before every one of this session's commits; the gate baseline above. |
 | 4 | `pnpm test:live` green vs `qwen3.7-max` | **NOT GREEN** | Ran and is not fully green (§ below): model non-determinism on the coding-loop/compaction live cases. Requires live-model tuning; no offline substitute. |
@@ -834,6 +834,27 @@ silent permissive default), I (the policy suites enforce each profile's decision
 the shipped TUI status line renders the profile and Shift+Tab cycles ask→auto-accept-edits→yolo→plan
 LIVE over a real PTY, i.e. "current profile visible in every client"), E
 (`evals/e2e/permissions.test.ts` — one goal run in all four profiles, each enforcing differently).
+Full `pnpm check` passes.
+
+**RT-05 (the comprehensive turn phase order) is now VERIFIED — and this one required a real build, not
+just evidence.** The engine already realized every phase except two: there was no queued-notifications
+phase (phase 2), and the `Stop` hook never fired. Both were built as strictly OBSERVE-ONLY additions
+to `packages/runtime/src/turn-engine.ts`: (1) a `queued-notifications` phase in `run()` that drains an
+INJECTED `NotificationDrain` (an abstraction, so runtime keeps no dependency on `@qwen-harness/background`
+— avoiding a layering violation) once at turn start and surfaces each summary to the model as away-time
+context, before the first context-assembly/model round; it is drained only in `run()`, never in
+`resume()` (a mid-flight turn must not re-drain). (2) A `Stop` lifecycle fired from a shared `#fireStop`
+helper on EVERY terminal path — normal/budget/hook completion (`#endTurn`), user cancellation
+(`#cancel`), and internal-error failure (the `#drive` catch) — so `stop-hooks` is genuinely the last
+phase of every ending, not just the happy one. The canonical order is the exported `TURN_ORDER`
+constant (single source of truth, documented phase-by-phase). Classes: U (NEW
+`packages/runtime/src/turn-order.test.ts` — `TURN_ORDER` has the ten phases in order, queued-notifications
+at index 1, stop-hooks last), I (NEW `packages/runtime/test/integration/turn-order.test.ts` — a real
+turn over the real `EventStore` with a `fireLifecycle` spy proves QueuedNotifications fires before any
+PreToolUse, the drained summary reaches the model input, `Stop` fires strictly last, a no-notifications
+turn still fires Stop, AND a cancelled turn still fires Stop last), E (NEW `evals/e2e/turn-order.test.ts`
+— deterministic end-to-end, nothing about the engine mocked). No existing test was modified or weakened;
+the only source changes are additive (new optional dep, two observe-only fires, one exported constant).
 Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
