@@ -128,7 +128,7 @@ Sources: [s06](https://learn.shareai.run/en/s06/), [s15](https://learn.shareai.r
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | AG-01 | One-shot subagents have independent history, explicit prompt/context/tool/model/budget/permission identity, shared or isolated workspace policy, and return a bounded conclusion. | U,I,E,L | IN_PROGRESS |
-| AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | IN_PROGRESS |
+| AG-02 | Support fresh-context, fork/cache-friendly, synchronous, foreground, asynchronous, and background subagent modes with explicit semantics. | U,I,F,E | VERIFIED |
 | AG-03 | Parent cancellation propagates; recursion and child count/depth/budget are bounded; children cannot create unbounded teams. | U,P,I,F,S | VERIFIED |
 | AG-04 | A subagent can be resumed by identity and retains its own compacted history, while ordinary completion returns only an attributed summary to the parent. | U,I,F,E | REQUIRED |
 | AG-05 | Long-lived teams contain a lead, independent teammate loops, shared task list, durable team config, and concurrent inboxes. | U,P,I,F,E,L | IN_PROGRESS |

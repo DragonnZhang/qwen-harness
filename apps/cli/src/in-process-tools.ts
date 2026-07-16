@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { NormalizedAction, PolicyContext, PolicyEngine } from '@qwen-harness/policy';
 import type { ToolEvaluation, ToolExecutionResult, ToolExecutor } from '@qwen-harness/runtime';
 import { z } from 'zod';
@@ -23,9 +25,16 @@ import type { InProcessSurface, ModelTool } from './wiring.ts';
  * model-chosen name.
  */
 
-/** The FIXED, HARDCODED, closed allowlist. No wildcard, no prefix match — exactly these two names. */
+/**
+ * The FIXED, HARDCODED, closed allowlist. No wildcard, no prefix match — exactly these three names.
+ * `delegate` (AG-02) joins `retrieve_output`/`ask_user` because it, too, needs an in-process handle
+ * the sandbox worker cannot hold: the durable store (for a forked seed and the child's own thread)
+ * and the live `SubagentSupervisor`. It is STILL routed through the same engine wrapping as the other
+ * two — hook → policy → approval → persist — and its name being in this closed set is the only thing
+ * that routes it in-process; the model cannot add a fourth.
+ */
 export const IN_PROCESS_TOOL_NAMES: ReadonlySet<string> = Object.freeze(
-  new Set(['retrieve_output', 'ask_user']),
+  new Set(['retrieve_output', 'ask_user', 'delegate']),
 ) as ReadonlySet<string>;
 
 /** A bound on how much retrieved content we feed back, so a huge blob cannot re-blow the budget. */
@@ -49,11 +58,41 @@ export interface UserInteraction {
   ask(question: string, signal: AbortSignal): Promise<string | null>;
 }
 
+/**
+ * The port `delegate` spawns through. Kept narrow and free of the `agents`/`policy` types so this
+ * module stays a leaf: the concrete supervisor/runner wiring lives in `subagent-tool.ts`. `run`
+ * returns the child's bounded conclusion (foreground) or an immediate "started" note (background);
+ * a normal child failure is `ok:false`, never a throw.
+ */
+export interface DelegatePort {
+  run(
+    args: {
+      label: string;
+      prompt: string;
+      context: 'fresh' | 'forked';
+      timing: 'foreground' | 'background';
+    },
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; modelText: string }>;
+}
+
 const RetrieveInput = z.object({
   ref: z.string().min(1).max(512).describe('The offload reference (blob digest) to retrieve.'),
 });
 const AskInput = z.object({
   question: z.string().min(1).max(4000).describe('The question to put to the user.'),
+});
+const DelegateInput = z.object({
+  label: z.string().min(1).max(200).describe('A short name for the subagent/subtask.'),
+  prompt: z.string().min(1).max(20_000).describe('The task the subagent should carry out.'),
+  context: z
+    .enum(['fresh', 'forked'])
+    .default('fresh')
+    .describe('fresh = isolated; forked = seeded with this conversation.'),
+  timing: z
+    .enum(['foreground', 'background'])
+    .default('foreground')
+    .describe('foreground = wait for the conclusion; background = start and continue.'),
 });
 
 function paramsSchema(schema: z.ZodType): Readonly<Record<string, unknown>> {
@@ -78,6 +117,16 @@ export const inProcessToolSchemas: readonly ModelTool[] = [
       'Ask the user a single free-form question and wait for their typed answer. Use when you ' +
       'genuinely need information only the user has. Unavailable in non-interactive runs.',
     parameters: paramsSchema(AskInput),
+  },
+  {
+    name: 'delegate',
+    description:
+      'Spawn a bounded subagent to handle a focused subtask and return only its conclusion. The ' +
+      'child runs one turn under an authority that can never exceed yours. `context` "fresh" ' +
+      '(default) gives the child only its prompt; "forked" seeds it with this conversation. ' +
+      '`timing` "foreground" (default) waits for and returns the conclusion; "background" starts ' +
+      'it and returns immediately, naming the subagent id.',
+    parameters: paramsSchema(DelegateInput),
   },
 ];
 
@@ -105,6 +154,12 @@ export function inProcessExecutor(opts: {
   /** Canonical absolute workspace root (the same value the built-in pipeline uses). */
   workspaceRoot: string;
   clock: { now(): number };
+  /**
+   * The subagent-spawn port (AG-02). Present only when the run wired a `SubagentSupervisor` + runner
+   * (production always does). Absent means `delegate` is still in the closed allowlist but declines
+   * with `unsupported` rather than escalating — defence in depth, same as an unknown name.
+   */
+  delegate?: DelegatePort;
 }): ToolExecutor {
   const failure = (category: string, message: string, durationMs: number): ToolExecutionResult => ({
     ok: false,
@@ -128,9 +183,23 @@ export function inProcessExecutor(opts: {
     }),
 
     evaluate: (call): Promise<ToolEvaluation> => {
-      // A workspace read is the honest, conservative NormalizedAction for both tools (see note
-      // above). This routes through the shared engine and yields a genuine allow/ask/deny.
-      const action: NormalizedAction = { kind: 'file-read', path: opts.workspaceRoot };
+      // The honest NormalizedAction differs by tool. `retrieve_output`/`ask_user` are read-only /
+      // interaction, so a workspace READ is the conservative representation. `delegate` spawns an
+      // agent that can act on the workspace — at least as sensitive as a workspace WRITE — so it is
+      // evaluated as a `file-write` scoped to the workspace root. Either way this routes through the
+      // SHARED engine and yields a genuine allow/ask/deny; nothing is hardcoded to allow.
+      const action: NormalizedAction =
+        call.toolName === 'delegate'
+          ? {
+              kind: 'file-write',
+              path: opts.workspaceRoot,
+              createsExecutable: false,
+              // A stable, valid sha256 over the arguments — approval binds to THIS delegate request.
+              contentDigest: createHash('sha256')
+                .update(JSON.stringify(call.arguments))
+                .digest('hex'),
+            }
+          : { kind: 'file-read', path: opts.workspaceRoot };
       const decision = opts.policy.evaluate(action, opts.policyContext());
       const status =
         decision.outcome === 'deny' ? 'deny' : decision.outcome === 'ask' ? 'ask' : 'allow';
@@ -211,6 +280,41 @@ export function inProcessExecutor(opts: {
           modelText: answer,
           userText: answer,
           errorCategory: null,
+          resultDigest: null,
+          outputRef: null,
+          truncated: false,
+          durationMs: done(),
+        };
+      }
+
+      if (call.toolName === 'delegate') {
+        if (opts.delegate === undefined) {
+          return failure('unsupported', 'subagent delegation is not available in this run', done());
+        }
+        const parsed = DelegateInput.safeParse(call.arguments);
+        if (!parsed.success) {
+          return failure(
+            'invalid-input',
+            `invalid delegate arguments: ${parsed.error.message}`,
+            done(),
+          );
+        }
+        // The spawn itself. A normal child failure returns `ok:false` with the reason as text — the
+        // parent turn continues; only a broken runner would throw, and the port never does.
+        const outcome = await opts.delegate.run(
+          {
+            label: parsed.data.label,
+            prompt: parsed.data.prompt,
+            context: parsed.data.context,
+            timing: parsed.data.timing,
+          },
+          call.signal,
+        );
+        return {
+          ok: outcome.ok,
+          modelText: outcome.modelText,
+          userText: outcome.modelText,
+          errorCategory: outcome.ok ? null : 'subagent-failed',
           resultDigest: null,
           outputRef: null,
           truncated: false,

@@ -1,6 +1,7 @@
 import { intersect, isAtMost, type Authority } from '@qwen-harness/policy';
 import type { ManagedPolicy } from '@qwen-harness/policy';
 import type { AgentId, IdSource } from '@qwen-harness/protocol';
+import type { ModelInputItem } from '@qwen-harness/provider-core';
 
 /**
  * Subagent delegation with bounded authority (section F: AG-01..AG-04).
@@ -16,7 +17,23 @@ import type { AgentId, IdSource } from '@qwen-harness/protocol';
  *     child's entire transcript (AG-01/AG-04).
  */
 
-export type SubagentMode = 'fresh' | 'forked' | 'sync' | 'background';
+/**
+ * A subagent mode is two ORTHOGONAL axes, never a flat enum. Conflating them (as the old
+ * `'fresh'|'forked'|'sync'|'background'` did) hides the fact that context and timing vary
+ * independently — a forked child can run in the background, a fresh child in the foreground, etc.
+ */
+export interface SubagentMode {
+  /** fresh = isolated (child sees only its prompt); forked = inherits a seed of the parent's context (cache-friendly reuse of the parent's prefix). */
+  readonly context: 'fresh' | 'forked';
+  /** foreground = the parent awaits the conclusion; background = the parent continues and the conclusion is collected later. */
+  readonly timing: 'foreground' | 'background';
+}
+
+/** Convenience constants for the four corners; the struct is canonical. */
+export const SUBAGENT_MODE_FRESH_FG: SubagentMode = { context: 'fresh', timing: 'foreground' };
+export const SUBAGENT_MODE_FORKED_FG: SubagentMode = { context: 'forked', timing: 'foreground' };
+export const SUBAGENT_MODE_FRESH_BG: SubagentMode = { context: 'fresh', timing: 'background' };
+export const SUBAGENT_MODE_FORKED_BG: SubagentMode = { context: 'forked', timing: 'background' };
 
 export interface SubagentSpec {
   readonly label: string;
@@ -28,6 +45,12 @@ export interface SubagentSpec {
   /** Hard budget for the child, itself bounded by the parent's remaining budget. */
   readonly maxModelCalls: number;
   readonly maxWallMs: number;
+  /**
+   * The parent-context seed the parent supplies when `mode.context === 'forked'` — a cache-friendly
+   * prefix of the parent's conversation the forked child reuses. IGNORED when `mode.context ===
+   * 'fresh'` (a fresh child sees only its own prompt and never receives this seed).
+   */
+  readonly forkedContext?: readonly ModelInputItem[];
 }
 
 export interface SubagentBudgetLimits {
@@ -76,7 +99,23 @@ export interface SubagentRunner {
     maxModelCalls: number;
     maxWallMs: number;
     signal: AbortSignal;
+    /**
+     * The parent-context seed — present ONLY for a forked-context child, and ABSENT for a fresh
+     * child. This is how "fresh vs forked" becomes observable to the runner: a fresh child's runner
+     * receives no seed at all; a forked child's runner receives the parent's supplied prefix.
+     */
+    forkedContext?: readonly ModelInputItem[];
   }): Promise<{ ok: boolean; summary: string; modelCalls: number }>;
+}
+
+/** A handle to a background subagent — the parent collects its conclusion later via `join()`. */
+export interface SubagentHandle {
+  readonly agentId: AgentId;
+  /**
+   * Awaits the child and returns its bounded conclusion. A background child whose runner REJECTS
+   * surfaces here as a REJECTED promise (never as a silent `ok:false`) — the caller must handle it.
+   */
+  join(): Promise<SubagentConclusion>;
 }
 
 export interface SupervisorContext {
@@ -98,6 +137,8 @@ export class SubagentSupervisor {
   readonly #limits: SubagentBudgetLimits;
   #totalSpawned = 0;
   #active = 0;
+  /** In-flight background conclusions, in spawn order, so `joinAll` can await them. */
+  readonly #background: Promise<SubagentConclusion>[] = [];
 
   constructor(ctx: SupervisorContext) {
     this.#ctx = ctx;
@@ -128,11 +169,12 @@ export class SubagentSupervisor {
     return result;
   }
 
-  async spawn(
-    spec: SubagentSpec,
-    runner: SubagentRunner,
-    signal: AbortSignal,
-  ): Promise<SubagentConclusion> {
+  /**
+   * The shared admission guards, run up front for BOTH timings: depth, total-count, active bound,
+   * cancelled-before-start, and the authority intersection (which itself refuses a widened child).
+   * Returns the intersected authority and the fresh agent id. Does NOT touch the counters.
+   */
+  #admit(spec: SubagentSpec, signal: AbortSignal): { authority: Authority; agentId: AgentId } {
     // Depth guard: a child at max depth cannot itself spawn children.
     if (this.#ctx.depth >= this.#limits.maxDepth) {
       throw new SubagentError(
@@ -152,37 +194,126 @@ export class SubagentSupervisor {
         `already ${this.#active} active children (limit ${this.#limits.maxActiveChildren})`,
       );
     }
+    if (signal.aborted)
+      throw new SubagentError('cancelled', 'parent was cancelled before the child started');
 
     const authority = this.childAuthority(spec.requestedAuthority);
     const agentId = this.#ctx.ids.next('agt') as AgentId;
+    return { authority, agentId };
+  }
+
+  /**
+   * Build the runner input, passing `forkedContext` ONLY for a forked child that actually supplied
+   * a seed. A fresh child's runner receives no `forkedContext` key at all (never an explicit
+   * `undefined`, per exactOptionalPropertyTypes) — that absence is the observable fresh/forked line.
+   */
+  #runInput(
+    spec: SubagentSpec,
+    agentId: AgentId,
+    authority: Authority,
+    signal: AbortSignal,
+  ): Parameters<SubagentRunner['run']>[0] {
+    const base = {
+      agentId,
+      prompt: spec.prompt,
+      authority,
+      model: spec.model,
+      maxModelCalls: spec.maxModelCalls,
+      maxWallMs: spec.maxWallMs,
+      signal,
+    };
+    if (spec.mode.context === 'forked' && spec.forkedContext !== undefined) {
+      return { ...base, forkedContext: spec.forkedContext };
+    }
+    return base;
+  }
+
+  #conclusion(
+    agentId: AgentId,
+    label: string,
+    result: { ok: boolean; summary: string; modelCalls: number },
+  ): SubagentConclusion {
+    return {
+      agentId,
+      label,
+      ok: result.ok,
+      // Bound the summary — a subagent returns a conclusion, not its whole transcript (AG-01).
+      summary: result.summary.slice(0, 8000),
+      modelCalls: result.modelCalls,
+    };
+  }
+
+  /**
+   * The FOREGROUND entry point: run the guards, run the child, and await its bounded conclusion.
+   * Called with a background spec it throws (a plain Error, not a SubagentError code) — background
+   * children go through `spawnBackground`, which returns a handle instead of awaiting.
+   */
+  async spawn(
+    spec: SubagentSpec,
+    runner: SubagentRunner,
+    signal: AbortSignal,
+  ): Promise<SubagentConclusion> {
+    if (spec.mode.timing !== 'foreground') {
+      throw new Error(
+        'spawn() is the foreground entry point; use spawnBackground() for a background-timing spec',
+      );
+    }
+    const { authority, agentId } = this.#admit(spec, signal);
 
     this.#totalSpawned++;
     this.#active++;
     try {
-      if (signal.aborted)
-        throw new SubagentError('cancelled', 'parent was cancelled before the child started');
-
-      const result = await runner.run({
-        agentId,
-        prompt: spec.prompt,
-        authority,
-        model: spec.model,
-        maxModelCalls: spec.maxModelCalls,
-        maxWallMs: spec.maxWallMs,
-        signal,
-      });
-
-      return {
-        agentId,
-        label: spec.label,
-        ok: result.ok,
-        // Bound the summary — a subagent returns a conclusion, not its whole transcript (AG-01).
-        summary: result.summary.slice(0, 8000),
-        modelCalls: result.modelCalls,
-      };
+      const result = await runner.run(this.#runInput(spec, agentId, authority, signal));
+      return this.#conclusion(agentId, spec.label, result);
     } finally {
       this.#active--;
     }
+  }
+
+  /**
+   * The BACKGROUND entry point: run the SAME admission guards and increment the counters up front,
+   * start the child WITHOUT awaiting, and return a handle immediately. The child counts toward
+   * `#active` from now until it SETTLES (success OR failure) — that is what the active bound is for,
+   * so `maxActiveChildren` background children in flight will make the next `spawnBackground` throw
+   * `active-exceeded`. Called with a foreground spec it throws (a plain Error, not a SubagentError).
+   */
+  spawnBackground(spec: SubagentSpec, runner: SubagentRunner, signal: AbortSignal): SubagentHandle {
+    if (spec.mode.timing !== 'background') {
+      throw new Error(
+        'spawnBackground() is the background entry point; use spawn() for a foreground-timing spec',
+      );
+    }
+    const { authority, agentId } = this.#admit(spec, signal);
+
+    this.#totalSpawned++;
+    this.#active++;
+    const running = (async () =>
+      this.#conclusion(
+        agentId,
+        spec.label,
+        await runner.run(this.#runInput(spec, agentId, authority, signal)),
+      ))();
+    // Release the active slot when the child SETTLES (not when this method returns), regardless of
+    // whether anyone ever calls join(). Attaching this handler also marks `running` as consumed, so
+    // a rejecting orphan never surfaces as an unhandled rejection; join() still sees the rejection.
+    running
+      .finally(() => {
+        this.#active--;
+      })
+      .catch(() => {});
+    this.#background.push(running);
+
+    return { agentId, join: () => running };
+  }
+
+  /**
+   * Awaits every background child spawned by this supervisor, in SPAWN order, and returns their
+   * bounded conclusions. Rejects if any background child rejected (Promise.all semantics); each
+   * child still settles its own active slot independently, so `#active` accounting is correct once
+   * all children have settled.
+   */
+  joinAll(): Promise<readonly SubagentConclusion[]> {
+    return Promise.all(this.#background);
   }
 
   /**

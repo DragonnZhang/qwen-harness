@@ -50,7 +50,7 @@ function recordingRunner(): SubagentRunner & { authorities: Authority[] } {
 const spec = (over: Partial<SubagentSpec> = {}): SubagentSpec => ({
   label: 'reviewer',
   prompt: 'review the code',
-  mode: 'sync',
+  mode: { context: 'fresh', timing: 'foreground' },
   requestedAuthority: auth('yolo'), // request MORE than the parent has
   model: 'qwen3.7-max',
   maxModelCalls: 10,

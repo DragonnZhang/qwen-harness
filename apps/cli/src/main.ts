@@ -82,6 +82,8 @@ import {
   headlessUserInteraction,
   inProcessSurface,
 } from './in-process-tools.ts';
+import { createDelegateSurface } from './subagent-tool.ts';
+import { DEFAULT_BUDGET } from '@qwen-harness/runtime';
 import { createHarnessRuntime, type GrantStore, type TurnOutcome } from './wiring.ts';
 
 /**
@@ -617,6 +619,28 @@ async function runCommand(
       now: deps.now(),
       actor: MODEL_ACTOR,
     });
+    // --- subagent delegation (AG-02): the `delegate` in-process tool ---------------------------
+    // A top-level (depth 0) `SubagentSupervisor` bounds this turn's children (depth/count/active +
+    // authority intersection); the production runner drives each child through a nested `TurnEngine`
+    // under a child authority that can never exceed this run's. The child's system prompt is the SAME
+    // composed prompt as the parent — read lazily below, because the prompt is composed after this
+    // surface is wired. Background children are collected via `supervisor.joinAll()` at turn end.
+    let composedInstructions = '';
+    const delegateSurface = createDelegateSurface({
+      parentAuthority: authority,
+      workspaceRoot: sessionWorkspace,
+      homeDir,
+      instructions: () => composedInstructions,
+      clock: { now: deps.now },
+      ids: realIds,
+      store,
+      policy,
+      parentThreadId: threadId,
+      model,
+      parentModelCalls: DEFAULT_BUDGET.maxModelCallsPerTurn,
+      parentWallMs: DEFAULT_BUDGET.maxWallMs,
+      ...(deps.provider ? { provider: deps.provider } : {}),
+    });
     const inProcess = inProcessSurface({
       blob: store,
       userInteraction,
@@ -624,6 +648,7 @@ async function runCommand(
       policyContext: inProcessPolicyContext,
       workspaceRoot: sessionWorkspace,
       clock: { now: deps.now },
+      delegate: delegateSurface.delegate,
     });
 
     // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
@@ -681,6 +706,9 @@ async function runCommand(
       context: { utilizationPercent, compactions },
       mode: promptMode,
     });
+    // A delegated subagent's turn is composed with the SAME system prompt as this parent turn. The
+    // delegate surface (wired above, before the prompt existed) reads this lazily at spawn time.
+    composedInstructions = composed.instructions;
 
     // The context manager the engine calls before every model round. Large tool outputs offload to
     // the durable blob store, the transcript prunes, and compaction fires on real transcript growth
@@ -775,6 +803,28 @@ async function runCommand(
             userText,
             history,
           });
+
+    // Collect any BACKGROUND subagents this turn started (AG-02): the parent continued while they
+    // ran, and `joinAll` awaits them in spawn order so nothing leaks an active slot. A child that
+    // failed surfaces as `ok:false` in its conclusion (not a rejection); a genuinely broken runner
+    // would reject, which we report rather than swallow.
+    try {
+      const backgroundConclusions = await delegateSurface.supervisor.joinAll();
+      for (const c of backgroundConclusions) {
+        if (!quiet) {
+          deps.stderr(
+            `note: background subagent ${c.label} (${c.agentId}) finished ` +
+              `${c.ok ? 'ok' : 'with failure'}: ${c.summary.slice(0, 200)}`,
+          );
+        }
+      }
+    } catch (e) {
+      if (!quiet) {
+        deps.stderr(
+          `note: a background subagent failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
 
     if (hooks !== null) {
       await hooks.fire('SessionEnd', { data: { state: result.state } });

@@ -42,7 +42,7 @@ const recordingRunner = (): SubagentRunner => ({
 const spec = (requested: Authority): SubagentSpec => ({
   label: 'child',
   prompt: 'do a thing',
-  mode: 'sync',
+  mode: { context: 'fresh', timing: 'foreground' },
   requestedAuthority: requested,
   model: 'qwen3.7-max',
   maxModelCalls: 5,

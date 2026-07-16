@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **126** |
-| IN_PROGRESS | 83 | 23 |
+| **VERIFIED** | 38 | **127** |
+| IN_PROGRESS | 83 | 22 |
 | REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -27,7 +27,7 @@ assessment, not a completion claim; incomplete items are marked incomplete.
 
 | # | Item | Status | Evidence / why |
 |---|---|---|---|
-| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 126/178** | 52 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
+| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 127/178** | 51 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
 | 2 | 10 golden paths pass | **DONE** | All ten cross-capability golden paths run as committed executed tests (this file, "All ten … golden paths pass"; `evals/e2e/*`). |
 | 3 | `pnpm check` passes clean from a committed tree | **DONE (continuously)** | Verified before every one of this session's commits; the gate baseline above. |
 | 4 | `pnpm test:live` green vs `qwen3.7-max` | **NOT GREEN** | Ran and is not fully green (§ below): model non-determinism on the coding-loop/compaction live cases. Requires live-model tuning; no offline substitute. |
@@ -879,6 +879,33 @@ through to the sandbox, the `/etc/passwd`-ref-reads-no-file proof, and a deny ru
 real `TurnEngine` with the normal gating), E (`evals/e2e/retrieve-output.test.ts` — a real `main()` turn
 offloads a large read then retrieves it by ref). No existing test or non-wiring source was modified. Full
 `pnpm check` passes.
+
+**AG-02 (subagent modes) is now VERIFIED — the biggest build of the session, done in two verified
+passes, and the KEYSTONE that unblocks the subagent cluster (HK-01, RT-06, AG-04).** Before this, the
+`SubagentSupervisor.spawn` path was unwired and `spec.mode` was never read. Pass 1 (`packages/agents`)
+replaced the flat `SubagentMode` enum with a two-axis struct — `context: 'fresh'|'forked'` (isolated vs.
+inheriting a seed of the parent's context) × `timing: 'foreground'|'background'` (parent awaits vs.
+continues) — and made `spawn` honor it: a shared `#admit` runs every existing guard
+(depth/count/active/cancelled + the `childAuthority` intersection) up front for BOTH paths;
+`spawnBackground` returns a `SubagentHandle{agentId, join()}` and releases its active slot on settle (a
+rejecting orphan never leaks or becomes an unhandled rejection); `joinAll()` collects in spawn order. Pass
+2 (`apps/cli`) wired it into production: `apps/cli/src/subagent-tool.ts` is a real `SubagentRunner` that
+runs one bounded nested `TurnEngine` turn under a child `RunAuthority`, and `delegate` joins the
+in-process allowlist (now the closed 3-name set `{retrieve_output, ask_user, delegate}`). The
+load-bearing security invariant — **a child can never exceed its parent** — is structural, not promised:
+the delegate requests the parent's own authority as the ceiling, the supervisor intersects it down
+(requested ∩ parent ∩ managed), the runner re-checks `isAtMost(child, parent)` and REFUSES (never runs)
+on any regression, the managed ceiling is inherited verbatim, and the child starts with empty grants.
+Depth is bounded (a child gets its own `delegate` only while `childDepth < maxDepth`; the supervisor's
+`depth-exceeded` guard backstops), and the child budget is a bounded fraction of the parent's. Forked
+context is sourced from the parent thread's PERSISTED items via `reconstructHistory` (no engine change).
+Classes: U (`packages/agents/src/subagent.modes.test.ts` — all four mode combinations + accounting), F
+(a background child whose runner rejects surfaces through `join()`; a failed child turn returns `ok:false`
+and the parent continues), I (`apps/cli/test/integration/subagent-delegate.test.ts` — fresh+foreground and
+background through the real supervisor/runner, plus the `AG-02 (S)` test proving a greedy `yolo`+network
+request is clamped to a restrictive `ask`+no-network parent), E (`evals/e2e/subagent-delegate.test.ts` — a
+`main()`-level delegated subtask, with a forked-context assertion). The only pre-existing test changed was
+the sanctioned TL-02 allowlist assertion (now 3 names, still a closed set). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

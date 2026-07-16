@@ -37,6 +37,7 @@ import {
   type ApprovalGate,
   type ApprovalRequest,
   type ApprovalRisk,
+  type BudgetLimits,
   type ContextManager,
   type NormalizedToolCall,
   type ToolEvaluation,
@@ -154,6 +155,12 @@ export interface HarnessRuntimeOptions {
    * proactive/reactive compaction fires on real growth. Absent means the full conversation is sent.
    */
   readonly context?: ContextManager;
+  /**
+   * Hard per-turn budget. Absent means the engine's frozen default. Used to bound a SUBAGENT'S turn
+   * (AG-02): a delegated child runtime is constructed with a fraction of the parent's model-call and
+   * wall-clock allowance, so a child can never outrun the budget the parent set for it.
+   */
+  readonly budget?: BudgetLimits;
 }
 
 /** A model-facing tool schema, as the provider wants it. */
@@ -696,6 +703,7 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
     ...(gate ? { approvals: gate } : {}),
     ...(hooks ? { hooks } : {}),
     ...(opts.context ? { context: opts.context } : {}),
+    ...(opts.budget ? { budget: opts.budget } : {}),
   });
 
   // The model-facing tool schemas: built-ins available in this profile, plus every connected MCP

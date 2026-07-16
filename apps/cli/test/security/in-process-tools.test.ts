@@ -84,11 +84,11 @@ const call = (toolName: string) => ({
 });
 
 describe('TL-02 (S) — the in-process allowlist is fixed and closed', () => {
-  it('only retrieve_output and ask_user are in the hardcoded allowlist', () => {
-    expect([...IN_PROCESS_TOOL_NAMES].sort()).toEqual(['ask_user', 'retrieve_output']);
+  it('only ask_user, delegate, and retrieve_output are in the hardcoded allowlist', () => {
+    expect([...IN_PROCESS_TOOL_NAMES].sort()).toEqual(['ask_user', 'delegate', 'retrieve_output']);
   });
 
-  it('compositeExecutor routes ONLY the two allowlisted names in-process; everything else falls through', async () => {
+  it('compositeExecutor routes ONLY the three allowlisted names in-process; everything else falls through', async () => {
     const seen: string[] = [];
     const builtin = spyExecutor('builtin', seen);
     const mcp: McpSurface = {
@@ -105,20 +105,23 @@ describe('TL-02 (S) — the in-process allowlist is fixed and closed', () => {
     for (const name of [
       'retrieve_output',
       'ask_user',
+      'delegate',
       'run_shell',
       'write_file',
       'edit_file',
       'evil_tool',
       'retrieve_output_evil', // a prefix, NOT the exact name — must not route in-process
+      'delegate_evil', // a prefix of `delegate` — must not route in-process either
       'mcp__srv__echo',
     ]) {
       await composite.execute(call(name));
     }
 
-    // The two exact names, and ONLY those, went in-process.
+    // The three exact names, and ONLY those, went in-process.
     expect(seen).toContain('inprocess:retrieve_output');
     expect(seen).toContain('inprocess:ask_user');
-    expect(seen.filter((s) => s.startsWith('inprocess:'))).toHaveLength(2);
+    expect(seen).toContain('inprocess:delegate');
+    expect(seen.filter((s) => s.startsWith('inprocess:'))).toHaveLength(3);
 
     // A mutating built-in, an invented name, and a mere prefix all reached the sandbox branch.
     expect(seen).toContain('builtin:run_shell');
@@ -126,6 +129,7 @@ describe('TL-02 (S) — the in-process allowlist is fixed and closed', () => {
     expect(seen).toContain('builtin:edit_file');
     expect(seen).toContain('builtin:evil_tool');
     expect(seen).toContain('builtin:retrieve_output_evil');
+    expect(seen).toContain('builtin:delegate_evil');
 
     // MCP still routes by its namespace.
     expect(seen).toContain('mcp:mcp__srv__echo');
@@ -265,6 +269,6 @@ describe('TL-02 (S) — inProcessSurface exposes the fixed allowlist', () => {
       clock: { now: () => NOW },
     });
     expect(surface.names).toBe(IN_PROCESS_TOOL_NAMES);
-    expect([...surface.names].sort()).toEqual(['ask_user', 'retrieve_output']);
+    expect([...surface.names].sort()).toEqual(['ask_user', 'delegate', 'retrieve_output']);
   });
 });

@@ -10,12 +10,21 @@
  * returns only a bounded, attributed CONCLUSION — not the child's whole transcript.
  */
 
-export { SubagentSupervisor, SubagentError, DEFAULT_SUBAGENT_LIMITS } from './subagent.ts';
+export {
+  SubagentSupervisor,
+  SubagentError,
+  DEFAULT_SUBAGENT_LIMITS,
+  SUBAGENT_MODE_FRESH_FG,
+  SUBAGENT_MODE_FORKED_FG,
+  SUBAGENT_MODE_FRESH_BG,
+  SUBAGENT_MODE_FORKED_BG,
+} from './subagent.ts';
 export type {
   SubagentSpec,
   SubagentMode,
   SubagentConclusion,
   SubagentRunner,
+  SubagentHandle,
   SupervisorContext,
   SubagentBudgetLimits,
 } from './subagent.ts';
