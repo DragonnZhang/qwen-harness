@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **111** |
-| IN_PROGRESS | 83 | 34 |
+| **VERIFIED** | 38 | **112** |
+| IN_PROGRESS | 83 | 33 |
 | REQUIRED | 57 | 33 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -620,6 +620,15 @@ restart) is unaffected — definitions reconstruct correctly (list/get/ceiling v
 durable clause is proven via the fire-time re-intersection above, which does not depend on
 reconstruction. Left as an explicit open item rather than silently worked around.) Full `pnpm check`
 passes.
+
+**QL-01 (root scripts provide every gate) is now VERIFIED**, building on the `scripts/**/*.test.ts`
+harness added for QL-03. Evidence in `scripts/gates.test.ts`: I (the manifest declares each of the 17
+required gate scripts — format, format:check, lint, typecheck, build, test, test:integration,
+test:security, test:pty, test:e2e, test:live, test:performance, test:migrations, test:packaging,
+architecture, secrets:scan, check — and the aggregate `check` chains the core gates in order), E
+(`pnpm format:check` runs end to end through its actual script and reports a clean tree, so a
+broken/missing entry fails the test, not just a text check), D (docs/quality/acceptance.md references
+`pnpm check`, so the manifest and the documentation cannot silently drift). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
