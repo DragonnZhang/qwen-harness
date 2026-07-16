@@ -20,6 +20,26 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 | IN_PROGRESS | 83 | 27 |
 | REQUIRED | 57 | 30 |
 
+### Definition-of-done items 1–12 — honest status (consolidated)
+
+Documented explicitly so the acceptance state is legible in ONE place. This is an in-progress
+assessment, not a completion claim; incomplete items are marked incomplete.
+
+| # | Item | Status | Evidence / why |
+|---|---|---|---|
+| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 121/178** | 57 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
+| 2 | 10 golden paths pass | **DONE** | All ten cross-capability golden paths run as committed executed tests (this file, "All ten … golden paths pass"; `evals/e2e/*`). |
+| 3 | `pnpm check` passes clean from a committed tree | **DONE (continuously)** | Verified before every one of this session's commits; the gate baseline above. |
+| 4 | `pnpm test:live` green vs `qwen3.7-max` | **NOT GREEN** | Ran and is not fully green (§ below): model non-determinism on the coding-loop/compaction live cases. Requires live-model tuning; no offline substitute. |
+| 5 | CLI installs / runs / resumes / uninstalls | **LARGELY DONE** | `packaging/test/{bootstrap,lifecycle}.test.ts`; resume path in `evals/e2e` + `apps/daemon` turn.test.ts. |
+| 6 | TUI PTY / Unicode / resize / etc. gates | **PARTIAL** | PTY suite (`apps/tui/test/pty/*`) covers streaming/mode-switch/slash-commands; not every gate class is exhaustively closed. |
+| 7 | Sandbox + adversarial suite | **DONE** | SC-01 (9-vector suite, this session) + the `*/test/security/*` sandbox suites (real bubblewrap). |
+| 8 | Crash / side-effect injection | **LARGELY DONE** | Daemon SS-05 crash recovery + `*/test/security` injection tests (side-effect-injection, output-DoS, path-escape). |
+| 9 | Architecture / schema checks | **DONE** | QL-03 (mechanical gate, this session) + `pnpm architecture` (9 boundaries) + the `migrations` project. |
+| 10 | Full docs | **PARTIAL** | Guides/defaults/checkpoint updated this session (prompt-modes, MCP precedence, cron backends, `--worktree`); not every surface is documented. |
+| 11 | No undisclosed limitations / shortcuts | **ONGOING — honored** | Limitations surfaced explicitly (item 4, HK-01 event coverage, the durable-recurring-restart observation, BG-03's absent categories). |
+| 12 | Clean tree + checkpoint commits + final report | **PARTIAL** | Tree clean + per-flip checkpoint commits throughout; the FINAL report is deliberately NOT written because item 1 is not complete. |
+
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
 the `P` gap; +3 from the installation/packaging guide closing `D` on PK-01/02/04; +5 near-misses
