@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **104** |
+| **VERIFIED** | 38 | **105** |
 | IN_PROGRESS | 83 | 36 |
-| REQUIRED | 57 | 38 |
+| REQUIRED | 57 | 37 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -515,6 +515,17 @@ read of `../../etc/passwd` even when the tool output IS a path string) and **E**
 (`evals/e2e/tool-output-offload.test.ts` — a real `main()` run reads six distinct large files; old
 results fall past the recent window and their payloads land in the blob store, while the durable
 tool-results stay intact). The full `pnpm check` passes.
+
+**MC-05 (MCP precedence + trust) is now VERIFIED.** The resolver was implemented (`packages/mcp/src/
+config.ts`: `connector < plugin < user < approved-project < local`, a managed exclusive/deny ceiling,
+and a project server that stays untrusted+inactive until explicit trust) with U (`config.test.ts`) and
+I (`apps/cli/test/integration/mcp.test.ts`). Added the missing classes: **P**
+(`config.property.test.ts` — over any set of sources the highest-ranked one wins, and a project server
+is active iff explicitly trusted while a non-project one always is), **S**
+(`packages/mcp/test/security/mcp-trust.test.ts` — a hostile cloned repo's `local`/`approved-project`
+server never auto-runs, and a managed deny/exclusive overrides even a user-trusted server), and **D**
+(`docs/guide/cli.md` — the precedence ladder and the "a repo can never trust its own server" rule).
+The full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13), a destructive-git tool (TL-06),

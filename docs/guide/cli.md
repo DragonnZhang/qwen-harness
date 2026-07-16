@@ -222,6 +222,21 @@ qwen-harness mcp                     # list configured servers and their tools
 qwen-harness mcp trust <server>      # trust a server (recorded in your home dir, never by a repo)
 ```
 
+**Precedence and trust (MC-05).** When the same server name is configured in more than one place, the
+strongest source wins, in this order (weakest → strongest):
+
+```
+connector  <  plugin  <  user  <  approved-project  <  local
+```
+
+On top of that, a **managed** administrator policy is an absolute ceiling: a managed *deny* keeps a
+server off no matter who configured or trusted it, and a managed *exclusive* allow-list keeps every
+unlisted server off. And a server that comes from the **repository** (`approved-project` or `local`)
+is **never trusted automatically** — it is listed but stays inactive, with a reason, until you run
+`mcp trust <server>` (recorded in your home directory, so a cloned repo can never trust its own
+server). A `connector`/`plugin`/`user` server, by contrast, is trusted without a prompt. Every server
+carries provenance so `doctor` can explain why it is — or is not — running.
+
 ### `background` and `cron`
 
 `background` manages detached tool jobs (list/output/stop); `cron` manages five-field scheduled jobs

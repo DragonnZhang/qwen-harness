@@ -236,7 +236,7 @@ Sources: [s19](https://learn.shareai.run/en/s19/) and [Claude Code MCP](https://
 | MC-02 | Support stdio, Streamable HTTP, SSE, WebSocket, and in-process transports. `ide-sse` is this product's documented SSE connection profile/handshake, not an undocumented proprietary protocol. | U,I,F,D | REQUIRED |
 | MC-03 | Names are normalized as `mcp__server__tool`; collisions, invalid characters, untrusted descriptions, schema abuse, and built-in precedence are handled deterministically. | U,P,I,S | VERIFIED |
 | MC-04 | Tool annotations declare read-only/destructive/open-world behavior and feed the same policy, hook, sandbox, audit, timeout, output, and cancellation pipeline. | U,P,I,S,E | VERIFIED |
-| MC-05 | Managed-exclusive policy is the ceiling; otherwise MCP precedence is connector < plugin < user < approved project < local, with provenance and explicit project trust. | U,P,I,S,D | REQUIRED |
+| MC-05 | Managed-exclusive policy is the ceiling; otherwise MCP precedence is connector < plugin < user < approved project < local, with provenance and explicit project trust. | U,P,I,S,D | VERIFIED |
 | MC-06 | Lifecycle supports bounded parallel connect, classified errors, health, dynamic `list_changed`, timeout, and graded process termination. HTTP/SSE reconnect; stdio restarts only when explicitly configured. | U,P,I,F | VERIFIED |
 | MC-07 | OAuth 2.0 + PKCE includes discovery, state/nonce, refresh/revocation/expiry/exchange and the Linux token-store hierarchy in defaults; plaintext SQLite or colocated master keys are forbidden. | U,P,I,F,S,E | VERIFIED |
 | MC-08 | Server-to-agent notifications, elicitation, resources, prompts, reverse permission requests, and wake-up channels are attributed and policy checked. | U,I,F,S,E | REQUIRED |
