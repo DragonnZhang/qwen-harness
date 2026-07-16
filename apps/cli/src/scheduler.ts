@@ -381,4 +381,49 @@ export function listCron(ctx: SchedulerContext, now: number): CronListItem[] {
   }));
 }
 
+/** The three CR-06 scheduling backends, from always-available to most capable. */
+export type CronBackend = 'session-scheduler' | 'local-daemon' | 'remote-routine-peer';
+
+export interface CronBackendStatus {
+  readonly backend: CronBackend;
+  readonly available: boolean;
+  readonly detail: string;
+}
+
+/**
+ * Report each scheduling backend's EXPLICIT availability (CR-06). The three backends are separate and
+ * their availability is STATED, never guessed or silently downgraded: the session scheduler is always
+ * available (a headless single poll reconstructs every durable job and needs no resident process); the
+ * local daemon is available only while one holds the single-writer lease; the remote routine peer is
+ * available only when a peer endpoint is configured. A caller whose intended backend is unavailable is
+ * told exactly why, rather than falling through to a weaker one without notice.
+ */
+export function cronBackendAvailability(signals: {
+  readonly daemonRunning: boolean;
+  readonly remoteEndpoint: string | null;
+}): readonly CronBackendStatus[] {
+  return [
+    {
+      backend: 'session-scheduler',
+      available: true,
+      detail: 'always available — a headless single poll needs no resident process',
+    },
+    {
+      backend: 'local-daemon',
+      available: signals.daemonRunning,
+      detail: signals.daemonRunning
+        ? 'a daemon holds the single-writer lease'
+        : 'unavailable — no daemon is running (no writer lease is held)',
+    },
+    {
+      backend: 'remote-routine-peer',
+      available: signals.remoteEndpoint !== null,
+      detail:
+        signals.remoteEndpoint !== null
+          ? `configured: ${signals.remoteEndpoint}`
+          : 'unavailable — no remote routine peer is configured',
+    },
+  ];
+}
+
 export { authorityOf, parseCron };

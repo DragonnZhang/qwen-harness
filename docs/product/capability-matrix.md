@@ -210,7 +210,7 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 | CR-03 | Recurring and one-shot jobs support create/list/delete, owner/thread, creation-time authority ceiling, workload tag, maximum 50 jobs, seven-day recurring expiry, and the deterministic jitter defaults in `docs/product/defaults.md`. | U,P,I,E | VERIFIED |
 | CR-04 | Durable definitions survive restart with locks and watchers; session-only definitions do not. The UI distinguishes these states. | U,P,I,F,T | REQUIRED |
 | CR-05 | A single invalid/failing job never kills the scheduler. Busy, coalescing, downtime, missed one-shot, recurring resume, local-timezone, and no-catch-up behavior matches `docs/product/defaults.md`. | U,P,I,F | VERIFIED |
-| CR-06 | Session scheduler, local daemon/supervisor, and authenticated remote routine peer are separate backends with explicit availability; remote peer passes the frozen protocol/fixture and unattended claims require a live supervisor. | I,F,S,E,D | IN_PROGRESS |
+| CR-06 | Session scheduler, local daemon/supervisor, and authenticated remote routine peer are separate backends with explicit availability; remote peer passes the frozen protocol/fixture and unattended claims require a live supervisor. | I,F,S,E,D | VERIFIED |
 | CR-07 | At fire time, a job intersects its creation-time authority ceiling with current managed policy. Work uses normal sandbox/budget/hook/audit/cancellation; without an approval channel, ask becomes `awaiting_approval` and never auto-allows. | U,I,S,E | VERIFIED |
 
 ## K. Git worktree isolation

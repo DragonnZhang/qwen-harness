@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **118** |
-| IN_PROGRESS | 83 | 29 |
+| **VERIFIED** | 38 | **119** |
+| IN_PROGRESS | 83 | 28 |
 | REQUIRED | 57 | 31 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -731,6 +731,22 @@ resume, not re-do. Classes: I (lifecycle + resume + scheduler-durable + daemon t
 lapse → lost, daemon crash-recovery, `teams` reclaim), E (`apps/daemon/test/integration/turn.test.ts`
 — the real daemon binary drives a turn), D (defaults.md "Remote agent and routine peer"). Full
 `pnpm check` passes.
+
+**CR-06 (cron backends: session/daemon/remote with explicit availability) is now VERIFIED — and the
+"explicit availability" abstraction was BUILT to make the claim true.** The three backends existed
+(scheduler, `apps/daemon`, `apps/remote-worker`) but nothing reported their availability. Added
+`cronBackendAvailability` (`apps/cli/src/scheduler.ts`) — the session scheduler is always available, the
+local daemon only while a writer lease is held, the remote peer only when configured — and WIRED it
+into `doctor` (a real report line per backend, never a silent downgrade). Evidence: availability
+(`apps/cli/test/unit/cron-backends.test.ts` U + `test/integration/doctor-backends.test.ts` I — the
+report shows each backend's state from the daemon-lease-file and remote-env signals), I
+(scheduler-durable.test.ts session + `apps/daemon/.../turn.test.ts` daemon + `apps/remote-worker/.../resume.test.ts`
+remote), F (daemon SS-05 crash recovery + remote reconnect + heartbeat-liveness), S (NEW
+`apps/cli/test/security/cron-preapproval.test.ts` — an unattended claim runs ONLY the operator's exact
+preapproved command, a different command is not covered, and a `plan` ceiling still refuses it, so the
+preapproval is never an escalation), E (turn.test.ts real daemon binary), D (defaults.md "Remote agent
+and routine peer"). "Remote peer passes the frozen protocol/fixture" is the versioned, zod-validated
+envelope + `session.test.ts`/`resume.test.ts`. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

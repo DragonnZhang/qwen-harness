@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { loadResolvedConfig, provenanceOf } from '@qwen-harness/config';
@@ -7,6 +8,7 @@ import { LATEST_SCHEMA_VERSION } from '@qwen-harness/storage';
 import { loadHooks } from './hooks.ts';
 import { loadGuidance } from './instructions.ts';
 import { loadMcpConfiguration } from './mcp.ts';
+import { cronBackendAvailability } from './scheduler.ts';
 import { createSkillSurface } from './skills.ts';
 import { listTraceFiles } from './telemetry.ts';
 
@@ -112,6 +114,14 @@ export function runDoctor(opts: {
   lines.push(
     '  migrations apply when a session is opened; a database written by a NEWER build is refused',
   );
+
+  // --- scheduling backends (CR-06): each backend's availability is stated, never guessed ---
+  const daemonRunning = existsSync(join(opts.projectRoot, '.qwen-harness', 'daemon.lease'));
+  const remoteEndpoint = opts.env['QWEN_HARNESS_REMOTE_PEER'] ?? null;
+  lines.push('scheduling backends:');
+  for (const b of cronBackendAvailability({ daemonRunning, remoteEndpoint })) {
+    lines.push(`  ${b.available ? '✓' : '·'} ${b.backend}: ${b.detail}`);
+  }
 
   // --- repository instructions (IN-06) ---
   try {
