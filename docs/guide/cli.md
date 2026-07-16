@@ -253,6 +253,7 @@ next token, so `run --json "the prompt"` keeps its prompt.
 | `--profile` | `plan`, `ask`, `auto-accept-edits`, `yolo` — plus the aliases `default` and `manual` (→ `ask`), `acceptEdits` (→ `auto-accept-edits`), `bypassPermissions` (→ `yolo`) | `ask` | The permission profile for this turn. An unknown value is a usage error: `run: unknown profile "<value>"`. |
 | `--model` | any model name | `qwen3.7-max` | The model sent to DashScope. |
 | `--prompt-mode` | `minimal`, `default`, `proactive`, `coordinator` (see below) | `default` | The prompt mode for this turn. An unknown value is a usage error: `run: unknown prompt mode "<value>"`. |
+| `--worktree` | a slug (`[a-z0-9][a-z0-9_-]*`) | off | Run this session in a fresh git worktree of the repo (GT-02): every tool resolves against the worktree, not the main checkout. Distinct from a teammate's cwd override. The worktree persists after the run; remove it with `git worktree remove`. A non-git directory is a usage error. |
 | `--json` | boolean | off | Print one machine-readable JSON object to stdout instead of prose. |
 
 `--profile` and `--model` apply to `run` and `resume` only. `sessions`, `fork`, and `export` are

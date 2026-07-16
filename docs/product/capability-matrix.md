@@ -220,7 +220,7 @@ Sources: [s18](https://learn.shareai.run/en/s18/) and [Claude Code worktrees](ht
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
 | GT-01 | Create an isolated worktree and branch from a validated base with collision-safe name/slug and no path traversal. | U,P,I,S | VERIFIED |
-| GT-02 | Enter/exit worktree for a session and cwd override for agents/teammates are distinct; every tool resolves against its assigned worktree. | U,I,E | IN_PROGRESS |
+| GT-02 | Enter/exit worktree for a session and cwd override for agents/teammates are distinct; every tool resolves against its assigned worktree. | U,I,E | VERIFIED |
 | GT-03 | Persist original cwd/branch/head, worktree path/branch/base, owner/session, and recovery state. | U,I,F | VERIFIED |
 | GT-04 | Keep and remove are explicit. Removal refuses dirty/unpushed work by default; discard requires exact approval and produces an audit event. | U,I,S,T | IN_PROGRESS |
 | GT-05 | Task-worktree binding is optional metadata and never silently changes task state; agent task ownership and workspace ownership remain independently recoverable. | U,P,I,F | VERIFIED |

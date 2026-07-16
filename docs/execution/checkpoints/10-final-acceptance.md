@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **119** |
-| IN_PROGRESS | 83 | 28 |
+| **VERIFIED** | 38 | **120** |
+| IN_PROGRESS | 83 | 27 |
 | REQUIRED | 57 | 31 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -747,6 +747,21 @@ preapproved command, a different command is not covered, and a `plan` ceiling st
 preapproval is never an escalation), E (turn.test.ts real daemon binary), D (defaults.md "Remote agent
 and routine peer"). "Remote peer passes the frozen protocol/fixture" is the versioned, zod-validated
 envelope + `session.test.ts`/`resume.test.ts`. Full `pnpm check` passes.
+
+**GT-02 (session worktree enter/exit vs teammate cwd override) is now VERIFIED — the session-worktree
+feature was BUILT.** The teammate cwd override existed (`team teammate --worktree`), but a SESSION had
+no way to enter a worktree. Added a `--worktree <slug>` flag to `run` (`apps/cli/src/main.ts`): it
+creates a fresh git worktree of the repo and points the session's tool-resolution root
+(`createHarnessRuntime.workspaceRoot` and the prompt's workspace) at it, while durable state stays
+under the repo. The two mechanisms are now genuinely distinct: the SESSION enters via `run --worktree`;
+a TEAMMATE is assigned its cwd by the lead via `team teammate --worktree`. Evidence: U
+(`packages/worktrees/test/security/slug.test.ts` slug/path-traversal validation +
+`worktree-binding.test.ts` assignment), I (NEW `apps/cli/test/integration/session-worktree.test.ts` —
+a real `--worktree` run's write lands in the WORKTREE not the main checkout, and without the flag it
+lands in the main checkout, so the flag — not the harness — redirects tool resolution), E
+(`evals/e2e/team.test.ts` — real teammate processes each resolve tools against their OWN worktree,
+files landing there never in the lead workspace). The flag is opt-in, so every existing run is
+unchanged. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

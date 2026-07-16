@@ -20,6 +20,7 @@ import { DASHSCOPE_DEFAULTS, EnvCredentialSource } from '@qwen-harness/provider-
 import { PromptModeSchema, toolsForMode, type PromptMode } from '@qwen-harness/instructions';
 import { BUILTIN_TOOLS } from '@qwen-harness/tools-builtin';
 import { EventStore, createRedactor } from '@qwen-harness/storage';
+import { createWorktree, WorktreeError } from '@qwen-harness/worktrees';
 
 import { interactiveApprovalGate } from './approvals.ts';
 import { contextUtilizationPercent, createContextManager } from './context.ts';
@@ -186,6 +187,9 @@ export async function main(deps: CliDeps): Promise<number> {
     );
     deps.stdout('');
     deps.stdout('  flags: --profile <plan|ask|auto-accept-edits|yolo>  --model <name>  --json');
+    deps.stdout(
+      '         --prompt-mode <minimal|default|proactive|coordinator>  --worktree <slug>',
+    );
     deps.stdout('         --skill <name>  run a skill by name');
     return 0;
   }
@@ -374,6 +378,24 @@ async function runCommand(
   // State lives under the workspace so a run is self-contained and inspectable.
   const stateDir = join(deps.cwd, '.qwen-harness');
   mkdirSync(stateDir, { recursive: true });
+
+  // Session-scoped worktree entry (GT-02): `--worktree <slug>` runs this session in a fresh git
+  // worktree of the repo, so every tool resolves against the WORKTREE, not the main checkout. This is
+  // DISTINCT from a teammate's cwd override (`team teammate --worktree`, where the LEAD assigns a
+  // teammate its cwd): here the SESSION itself enters the worktree, while its durable state stays
+  // under the repo. The worktree persists after the run for inspection; "exit" is `git worktree
+  // remove` (or the `worktrees` recovery path), never a silent discard of work.
+  let sessionWorkspace = deps.cwd;
+  if (flags['worktree'] !== undefined) {
+    try {
+      const wt = createWorktree({ repoRoot: deps.cwd, slug: flags['worktree'], now: deps.now() });
+      sessionWorkspace = wt.path;
+      if (!quiet) deps.stderr(`note: session entered worktree ${wt.branch} at ${wt.path}`);
+    } catch (e) {
+      deps.stderr(`run: --worktree: ${e instanceof WorktreeError ? e.message : String(e)}`);
+      return 1;
+    }
+  }
   const sessionsPath = join(stateDir, 'sessions.sqlite');
   // No session store yet → this is the first run in this workspace, which fires `Setup` below (HK-01).
   const firstRun = !existsSync(sessionsPath);
@@ -606,7 +628,7 @@ async function runCommand(
       agentName: 'qwen-harness',
       model,
       profile,
-      workspaceRoot: deps.cwd,
+      workspaceRoot: sessionWorkspace,
       repo: deps.cwd,
       toolNames,
       threadId,
@@ -635,7 +657,7 @@ async function runCommand(
     });
 
     const runtime = createHarnessRuntime({
-      workspaceRoot: deps.cwd,
+      workspaceRoot: sessionWorkspace,
       authority,
       model,
       // Sent on EVERY provider request (IN-10). Caching is an optimization over identical content;
