@@ -156,7 +156,7 @@ Sources: [s07](https://learn.shareai.run/en/s07/), [s10](https://learn.shareai.r
 | IN-06 | Repository instructions resolve global/ancestor/root/nested/path-scoped guidance with provenance and deterministic precedence; loading emits InstructionsLoaded. | U,P,I,E | VERIFIED |
 | IN-07 | System prompt is composed from independently tested sections enabled by real runtime state, not one mutable string. | U,I | VERIFIED |
 | IN-08 | Stable identity/tool/workspace sections and dynamic memory/session/MCP/context sections have deterministic cache keys and explicit invalidation. | U,P,I,F | VERIFIED |
-| IN-09 | Support minimal, default, proactive, coordinator, and agent-defined prompt modes with the activation, prompt delta, tool availability, policy inheritance, cache behavior, and observable tasks frozen in `docs/product/defaults.md`. | U,I,E,D | REQUIRED |
+| IN-09 | Support minimal, default, proactive, coordinator, and agent-defined prompt modes with the activation, prompt delta, tool availability, policy inheritance, cache behavior, and observable tasks frozen in `docs/product/defaults.md`. | U,I,E,D | VERIFIED |
 | IN-10 | Instruction text is sent on every provider request when the transport does not inherit it; cache optimization cannot change behavior. | U,I,F,L | IN_PROGRESS |
 
 ## H. Context compression and long-term memory

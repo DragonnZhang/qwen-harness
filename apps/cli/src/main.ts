@@ -17,6 +17,7 @@ import {
 } from '@qwen-harness/protocol';
 import type { ModelProvider } from '@qwen-harness/provider-core';
 import { DASHSCOPE_DEFAULTS, EnvCredentialSource } from '@qwen-harness/provider-dashscope';
+import { PromptModeSchema, toolsForMode, type PromptMode } from '@qwen-harness/instructions';
 import { BUILTIN_TOOLS } from '@qwen-harness/tools-builtin';
 import { EventStore, createRedactor } from '@qwen-harness/storage';
 
@@ -305,6 +306,29 @@ async function runCommand(
   // it never silences the actual result (stdout) or a genuine error (those a script must still see).
   const quiet = 'quiet' in flags;
 
+  // Prompt mode (IN-09). It is prompt text and tool VISIBILITY, never authority — so it is resolved
+  // here, entirely outside `loadRunAuthority`. `agent-defined` needs a validated agent definition
+  // (granted-tools list, section bodies) that a direct `run` has no source for, so it is rejected
+  // rather than silently degraded to "no tools".
+  let promptMode: PromptMode = 'default';
+  if (flags['prompt-mode'] !== undefined) {
+    const parsed = PromptModeSchema.safeParse(flags['prompt-mode']);
+    if (!parsed.success) {
+      deps.stderr(
+        `run: unknown prompt mode "${flags['prompt-mode']}" ` +
+          `(expected minimal|default|proactive|coordinator|agent-defined)`,
+      );
+      return 1;
+    }
+    if (parsed.data === 'agent-defined') {
+      deps.stderr(
+        `run: prompt mode "agent-defined" requires an agent definition; not available in a direct run`,
+      );
+      return 1;
+    }
+    promptMode = parsed.data;
+  }
+
   // Configuration is LOADED, not assumed. Flags are just the highest-precedence config source, so
   // they flow through the same resolution as managed/user/project files — and are clamped by the
   // managed ceiling like everything else. A `--profile yolo` on a host whose administrator set
@@ -548,8 +572,20 @@ async function runCommand(
     // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
     // Composed from sections built from REAL runtime state, each with a deterministic cache key —
     // not the single hard-coded string literal that used to live here.
+    // Prompt-mode tool restriction (IN-09). A mode can only REMOVE tools, never add. `coordinator`
+    // (no-mutation) drops every built-in that mutates the world — a tool "mutates" iff its contract's
+    // annotations are not `readOnly`. The filtered set is applied to BOTH the model's offered tools
+    // (below) AND the executable pipeline (`builtins`, further down), so the restriction is real, not
+    // a cosmetic prompt edit: a coordinator that tries to write is refused by the pipeline itself.
+    const modeAllowedBuiltins = new Set(
+      toolsForMode(
+        { mode: promptMode },
+        BUILTIN_TOOLS.map((t) => ({ name: t.name, mutates: !t.annotations.readOnly })),
+      ).map((d) => d.name),
+    );
+    const runBuiltins = BUILTIN_TOOLS.filter((t) => modeAllowedBuiltins.has(t.name));
     const toolNames = [
-      ...BUILTIN_TOOLS.filter((t) => t.availableIn.includes(profile)).map((t) => t.name),
+      ...runBuiltins.filter((t) => t.availableIn.includes(profile)).map((t) => t.name),
       ...(mcp?.surface.tools ?? []).map((t) => t.name),
     ];
     const turnNumber = countTurns(store, threadId) + 1;
@@ -584,6 +620,7 @@ async function runCommand(
             }
           : null,
       context: { utilizationPercent, compactions },
+      mode: promptMode,
     });
 
     // The context manager the engine calls before every model round. Large tool outputs offload to
@@ -609,6 +646,9 @@ async function runCommand(
       ids: realIds,
       store,
       policy,
+      // The mode-restricted built-in set (IN-09). `coordinator` hands the pipeline a registry with no
+      // mutation tools, so the restriction is enforced where execution happens — not merely advertised.
+      builtins: runBuiltins,
       context: contextManager,
       ...(approvals ? { approvals } : {}),
       ...(deps.provider ? { provider: deps.provider } : {}),

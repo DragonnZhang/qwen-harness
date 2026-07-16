@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **107** |
+| **VERIFIED** | 38 | **108** |
 | IN_PROGRESS | 83 | 36 |
-| REQUIRED | 57 | 35 |
+| REQUIRED | 57 | 34 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -549,6 +549,22 @@ tool-result), S (`packages/storage/test/security/audit-redaction.test.ts` — a 
 the credential in its message and request id is scrubbed in the durable audit, without deleting the
 failure record), and P (`packages/storage/src/redaction.property.test.ts` — the credential never
 survives `redactValue`, in any position or depth). The full `pnpm check` passes.
+
+**IN-09 (prompt modes) is now VERIFIED — a loaded-but-not-wired fix.** The five-mode table
+(`packages/instructions/src/prompt-modes.ts`) was fully implemented, exported, and unit-tested, but
+NOTHING outside the instructions package consumed it: `composePrompt` never applied a mode, and no
+run could select one. Wired it end to end: a `--prompt-mode` flag on `run` (rejecting an unknown mode
+and `agent-defined`, which a direct run has no definition for); `composePrompt` now appends the
+mode's frozen prompt delta as a STABLE section (kept in the cacheable prefix — `compareSections`
+already orders the `mode` id deterministically, so no ordering table changed); and the mode's tool
+restriction is applied to BOTH the offered tools and the executable pipeline via `opts.builtins`, so
+`coordinator` (no-mutation) genuinely hands the pipeline no write tool. Evidence: U
+(`prompt-modes.test.ts` table + `apps/cli/test/unit/prompt-mode.test.ts` — the delta lands in the
+stable prefix, `default`/omitted add nothing), I (`apps/cli/test/integration/prompt-mode.test.ts` — a
+real coordinator run's `write_file` resolves to a failed tool-result and no file appears, while an
+identical default run writes it; authority is unchanged), E (`evals/e2e/prompt-modes.test.ts` — the
+`--prompt-mode` CLI contract over all modes), D (cli.md prompt-modes section citing the frozen
+defaults.md table). `modeChangesAuthority` stays `false` for every mode. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

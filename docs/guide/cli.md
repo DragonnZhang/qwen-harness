@@ -252,6 +252,7 @@ next token, so `run --json "the prompt"` keeps its prompt.
 |---|---|---|---|
 | `--profile` | `plan`, `ask`, `auto-accept-edits`, `yolo` — plus the aliases `default` and `manual` (→ `ask`), `acceptEdits` (→ `auto-accept-edits`), `bypassPermissions` (→ `yolo`) | `ask` | The permission profile for this turn. An unknown value is a usage error: `run: unknown profile "<value>"`. |
 | `--model` | any model name | `qwen3.7-max` | The model sent to DashScope. |
+| `--prompt-mode` | `minimal`, `default`, `proactive`, `coordinator` (see below) | `default` | The prompt mode for this turn. An unknown value is a usage error: `run: unknown prompt mode "<value>"`. |
 | `--json` | boolean | off | Print one machine-readable JSON object to stdout instead of prose. |
 
 `--profile` and `--model` apply to `run` and `resume` only. `sessions`, `fork`, and `export` are
@@ -260,6 +261,35 @@ pure reads over the log and never call the model.
 > There is no `--cwd`, no `--config`, no `--verbose`, and no `--yes`. There is deliberately no flag
 > that auto-approves: an approval is a human decision, and a switch that manufactures one would make
 > every approval in the audit log a lie. Use `--profile` to choose your authority up front.
+
+### Prompt modes (`--prompt-mode`)
+
+A prompt mode selects which behavioral guidance and which tools the model sees. The full table —
+each mode's activation, prompt delta, tool availability, policy inheritance, cache behavior, and
+observable capabilities — is frozen in [`docs/product/defaults.md`](../product/defaults.md); this is
+the operator summary.
+
+| Mode | Tools the model sees | Guidance it adds |
+|---|---|---|
+| `minimal` | all held | Identity, protocol, tool schemas, current policy, and safety only — no proactive behavior. |
+| `default` | all held | The standard workflow guidance. Adding no `--prompt-mode` flag is exactly this. |
+| `proactive` | all held | May create tasks, use background work, and continue obvious next steps within the current authority. |
+| `coordinator` | **held minus every mutating tool** | The lead plans, delegates, reviews, merges, and verifies; it does not mutate the workspace directly. `write_file`, `edit_file`, and `run_shell` are simply not offered. |
+
+A mode is **prompt text and tool visibility — never authority.** No mode raises or lowers your
+permission profile or isolation: a `coordinator` run under `--profile yolo` is still a `yolo` run,
+only with fewer tools. The `coordinator` restriction is enforced by the execution pipeline itself, not
+just described in the prompt — a coordinator that attempts a write is refused with a failed
+tool-result, and no file is written.
+
+```bash
+# Plan-and-delegate: the lead cannot edit files directly.
+qwen-harness run --profile auto-accept-edits --prompt-mode coordinator "refactor the parser"
+```
+
+The fifth mode in `defaults.md`, `agent-defined`, is only meaningful for a subagent that carries a
+validated definition (its own granted-tools list and prompt sections). A direct `run` has no such
+definition, so `--prompt-mode agent-defined` is rejected rather than silently degraded to "no tools".
 
 ## Approvals
 

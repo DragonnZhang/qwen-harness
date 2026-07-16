@@ -5,8 +5,10 @@ import {
   composeSystemPrompt,
   instructionStringForRequest,
   loadInstructions,
+  promptModeSection,
   type ComposedSystemPrompt,
   type InstructionsLoaded,
+  type PromptMode,
   type SystemPromptState,
 } from '@qwen-harness/instructions';
 import type { PermissionProfile } from '@qwen-harness/protocol';
@@ -98,6 +100,13 @@ export interface PromptInputs {
    * durable compaction record. Omitted only by callers that have no store; defaults to zeroes.
    */
   readonly context?: { utilizationPercent: number; compactions: number };
+  /**
+   * The active prompt mode (IN-09). Omitted is treated as `default` and adds no mode section — the
+   * prior behavior. A non-default mode contributes a `mode` section (its frozen prompt delta) to the
+   * cacheable stable prefix; the mode NEVER changes authority (see `modeChangesAuthority`), and any
+   * tool restriction the mode implies is applied by the caller before `toolNames` is passed in.
+   */
+  readonly mode?: PromptMode;
 }
 
 export interface ComposedPrompt {
@@ -136,7 +145,15 @@ export function composePrompt(
     context: inputs.context ?? { utilizationPercent: 0, compactions: 0 },
   };
 
-  const composed = composeSystemPrompt(buildStandardSections(state));
+  // The mode section (IN-09) is a STABLE section: it belongs to the cacheable prefix because a mode
+  // changes only when a user changes it. `default` adds nothing (the prior behavior); any other mode
+  // contributes exactly its frozen prompt delta. `compareSections` places the `mode` id after the
+  // known stable sections deterministically, so no ordering table needs to know about it.
+  const sections = buildStandardSections(state);
+  if (inputs.mode !== undefined && inputs.mode !== 'default') {
+    sections.push(promptModeSection({ mode: inputs.mode }));
+  }
+  const composed = composeSystemPrompt(sections);
 
   const instructions = instructionStringForRequest(guidance.loaded, {
     systemPrompt: composed.text,
