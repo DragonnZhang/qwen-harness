@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **116** |
-| IN_PROGRESS | 83 | 31 |
+| **VERIFIED** | 38 | **117** |
+| IN_PROGRESS | 83 | 30 |
 | REQUIRED | 57 | 31 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -698,6 +698,20 @@ server-driven sampling is refused by default), E (`evals/e2e/mcp.test.ts` golden
 second-process HTTP server pushes a reverse notification and a malicious server is denied). "Reverse
 permission requests" is the elicitation path; "wake-up channels" is the server-initiated notification
 handler. Full `pnpm check` passes.
+
+**SS-08 (per-user daemon single-writer lease) is now VERIFIED** — the daemon (`apps/daemon`) and its
+`acquireLease` (an atomic `O_CREAT|O_EXCL` lock file holding the holder pid, with stale-reclaim of a
+dead holder) were implemented and integration-tested; added the invariant-level classes. Evidence: U
+(NEW `apps/daemon/test/unit/lease-invariant.test.ts` — the lock round-trips the holder pid, reports
+held only for a live holder, and `release` removes ONLY our own lock, never one a reclaimer took
+over), P (same file — a fast-check property that while this live process holds the lease, NO other pid
+can acquire it, and the holder is never silently displaced), I (`test/integration/lease.test.ts`
+acquire/refuse-while-live + `socket.test.ts` client attach), F (`lease.test.ts` — a STALE lock from a
+dead process is reclaimed, so a crashed daemon never locks a user out), E
+(`test/integration/turn.test.ts` — the REAL daemon binary drives a real turn with one writer and many
+socket observers; a prompt starts a turn, an approval resumes THAT turn, a cancel kills the process
+group). "cwd/worktree changes preserve canonical ownership" is the `canonicalRepoRootOf` mechanism
+(MM-05) the daemon keys thread ownership on. Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
