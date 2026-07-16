@@ -102,7 +102,23 @@ export {
   type McpConfiguration,
   type ConnectedMcp,
 } from './mcp.ts';
-export { compositeExecutor, type McpSurface, type ModelTool } from './wiring.ts';
+export {
+  compositeExecutor,
+  type McpSurface,
+  type ModelTool,
+  type InProcessSurface,
+} from './wiring.ts';
+export {
+  inProcessExecutor,
+  inProcessSurface,
+  inProcessToolSchemas,
+  cliUserInteraction,
+  headlessUserInteraction,
+  IN_PROCESS_TOOL_NAMES,
+  MAX_RETRIEVE_CHARS,
+  type BlobPort,
+  type UserInteraction,
+} from './in-process-tools.ts';
 
 // Durable work made reachable from the CLI: the task graph (WK-*), background lifecycle (BG-*), and
 // Cron scheduler + supervisor (CR-*). Exported so they are tested against the real production path.

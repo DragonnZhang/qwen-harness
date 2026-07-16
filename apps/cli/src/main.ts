@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
-import { PolicyEngine, type Grant } from '@qwen-harness/policy';
+import { PolicyEngine, type Grant, type PolicyContext } from '@qwen-harness/policy';
 import {
   resolveProfile,
   type Actor,
@@ -77,6 +77,11 @@ import {
   type TeamDeps,
 } from './team.ts';
 import { listTraceFiles, openTelemetry, readTraceFile } from './telemetry.ts';
+import {
+  cliUserInteraction,
+  headlessUserInteraction,
+  inProcessSurface,
+} from './in-process-tools.ts';
 import { createHarnessRuntime, type GrantStore, type TurnOutcome } from './wiring.ts';
 
 /**
@@ -591,6 +596,36 @@ async function runCommand(
         deps.stderr(`note: MCP server '${failure.server}' did not connect: ${failure.error}`);
     }
 
+    // --- in-process tools (TL-02): retrieve_output + ask_user ---------------------------------
+    // The third executor. `retrieve_output` reads the durable blob store (offloaded output, TL-10);
+    // `ask_user` asks the human. Both run in-process because the sandbox worker can reach neither.
+    // The user channel mirrors the approval channel's interactive-vs-headless choice EXACTLY: a
+    // `--json` machine caller or a run with no input channel has nobody to ask, so `ask_user` gets a
+    // headless channel that declines (never fabricates an answer); otherwise it prompts on the same
+    // `readLine` the approval gate uses. It is judged by the SAME shared `policy` engine.
+    const userInteraction =
+      asJson || readLine === undefined
+        ? headlessUserInteraction()
+        : cliUserInteraction({ stdout: deps.stdout, readLine });
+    const inProcessPolicyContext = (): PolicyContext => ({
+      profile,
+      managedPolicy: authority.managedPolicy,
+      rules: authority.rules,
+      grants: runtimeGrants(),
+      workspaceRoot: sessionWorkspace,
+      homeDir,
+      now: deps.now(),
+      actor: MODEL_ACTOR,
+    });
+    const inProcess = inProcessSurface({
+      blob: store,
+      userInteraction,
+      policy,
+      policyContext: inProcessPolicyContext,
+      workspaceRoot: sessionWorkspace,
+      clock: { now: deps.now },
+    });
+
     // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
     // Composed from sections built from REAL runtime state, each with a deterministic cache key —
     // not the single hard-coded string literal that used to live here.
@@ -609,6 +644,8 @@ async function runCommand(
     const toolNames = [
       ...runBuiltins.filter((t) => t.availableIn.includes(profile)).map((t) => t.name),
       ...(mcp?.surface.tools ?? []).map((t) => t.name),
+      // The in-process tools (TL-02) are available in every mode, so the prompt's tool list names them.
+      ...inProcess.tools.map((t) => t.name),
     ];
     const turnNumber = countTurns(store, threadId) + 1;
 
@@ -672,6 +709,7 @@ async function runCommand(
       // mutation tools, so the restriction is enforced where execution happens — not merely advertised.
       builtins: runBuiltins,
       context: contextManager,
+      inProcess,
       ...(approvals ? { approvals } : {}),
       ...(deps.provider ? { provider: deps.provider } : {}),
       ...(telemetry.tracer ? { tracer: telemetry.tracer, detailedTrace: telemetry.detailed } : {}),

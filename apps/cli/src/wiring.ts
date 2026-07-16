@@ -139,6 +139,13 @@ export interface HarnessRuntimeOptions {
    * hooks, and the same audit trail. There is no privileged MCP path.
    */
   readonly mcp?: McpSurface;
+  /**
+   * The in-process tool surface (TL-02): `retrieve_output` and `ask_user`, run through a third
+   * executor that owns the durable blob store and the user channel. Offered to the model alongside
+   * the built-ins and routed by the SAME composite, so the SAME hooks, approvals, durable record,
+   * and policy engine apply. Absent means neither tool is advertised or reachable.
+   */
+  readonly inProcess?: InProcessSurface;
   /** Extra system-prompt-independent tools (skills catalogs etc.) offered to the model. */
   readonly extraTools?: readonly ModelTool[];
   /**
@@ -160,6 +167,20 @@ export interface McpSurface {
   /** Namespaced `mcp__<server>__<tool>` schemas to offer the model. */
   readonly tools: readonly ModelTool[];
   /** Executes exactly those tools. Anything else must be refused, not guessed at. */
+  readonly executor: ToolExecutor;
+}
+
+/**
+ * The in-process tool surface (TL-02): the third executor, alongside the sandbox pipeline and MCP.
+ * Its `names` is a FIXED, CLOSED allowlist — `compositeExecutor` routes a call here ONLY when its
+ * exact name is in that set, so the in-process path can never run a model-chosen or arbitrary name.
+ */
+export interface InProcessSurface {
+  /** Schemas to advertise to the model (e.g. `retrieve_output`, `ask_user`). */
+  readonly tools: readonly ModelTool[];
+  /** The fixed, closed allowlist of names this executor owns. No wildcard, no prefix match. */
+  readonly names: ReadonlySet<string>;
+  /** Executes exactly the allowlisted tools. */
   readonly executor: ToolExecutor;
 }
 
@@ -465,18 +486,38 @@ const MCP_PREFIX = 'mcp__';
  * reaches the built-in pipeline, which rejects it as an unknown tool; it is never silently routed
  * to a server.
  *
- * What this composite deliberately does NOT do is bypass anything. Both branches are ordinary
- * `ToolExecutor`s, so the engine wraps BOTH in the same order: hooks gate the call, policy decides
- * it, an `ask` suspends the turn for a real approval, and the intent/result pair is persisted around
- * the execution. MCP gets no shortcut because there is nowhere to put one.
+ * What this composite deliberately does NOT do is bypass anything. Every branch is an ordinary
+ * `ToolExecutor`, so the engine wraps ALL of them in the same order: hooks gate the call, policy
+ * decides it, an `ask` suspends the turn for a real approval, and the intent/result pair is persisted
+ * around the execution. MCP and the in-process path get no shortcut because there is nowhere to put
+ * one.
+ *
+ * Routing precedence — in-process FIRST, by its FIXED, CLOSED allowlist. A name is dispatched to the
+ * in-process executor ONLY when it is exactly one of `inProcess.names` (no wildcard, no prefix
+ * match); a built-in can therefore never be shadowed by it and, crucially, the model cannot cause an
+ * arbitrary name to run in-process. Then MCP (namespaced + registered), then the built-in sandbox
+ * pipeline, which rejects an unknown name as an unknown tool. `planBatches` is delegated to the
+ * built-in executor (it classifies unknown names conservatively, as their own serial group), so
+ * built-in read concurrency (TL-08) survives the composite.
  */
-export function compositeExecutor(builtin: ToolExecutor, mcp: McpSurface): ToolExecutor {
+export function compositeExecutor(
+  builtin: ToolExecutor,
+  mcp?: McpSurface,
+  inProcess?: InProcessSurface,
+): ToolExecutor {
+  const isInProcess = (toolName: string): boolean =>
+    inProcess !== undefined && inProcess.names.has(toolName);
   const isMcp = (toolName: string): boolean =>
-    toolName.startsWith(MCP_PREFIX) && mcp.tools.some((t) => t.name === toolName);
+    mcp !== undefined &&
+    toolName.startsWith(MCP_PREFIX) &&
+    mcp.tools.some((t) => t.name === toolName);
+  const pick = (toolName: string): ToolExecutor =>
+    isInProcess(toolName) ? inProcess!.executor : isMcp(toolName) ? mcp!.executor : builtin;
   return {
-    intentFor: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).intentFor(call),
-    evaluate: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).evaluate(call),
-    execute: (call) => (isMcp(call.toolName) ? mcp.executor : builtin).execute(call),
+    intentFor: (call) => pick(call.toolName).intentFor(call),
+    evaluate: (call) => pick(call.toolName).evaluate(call),
+    execute: (call) => pick(call.toolName).execute(call),
+    ...(builtin.planBatches ? { planBatches: (calls) => builtin.planBatches!(calls) } : {}),
   };
 }
 
@@ -620,9 +661,14 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
   const gate =
     grantingGate && tracer ? tracedApprovals(grantingGate, tracer, opts.clock) : grantingGate;
 
-  // MCP tools execute through their own executor, but through the SAME engine — so the same hooks,
-  // the same approvals, the same durable intent/result pair, and the same policy engine apply.
-  const routed = opts.mcp ? compositeExecutor(builtinExecutor, opts.mcp) : builtinExecutor;
+  // MCP and in-process tools execute through their own executors, but through the SAME engine — so
+  // the same hooks, the same approvals, the same durable intent/result pair, and the same policy
+  // engine apply. When neither is present the built-in executor is used directly (and keeps its own
+  // `planBatches`); otherwise the composite routes by name and delegates batching to the built-in.
+  const routed =
+    opts.mcp || opts.inProcess
+      ? compositeExecutor(builtinExecutor, opts.mcp, opts.inProcess)
+      : builtinExecutor;
   const executor = tracer ? tracedExecutor(routed, tracer, opts.clock, detailed) : routed;
 
   const hooks = opts.hooks && tracer ? tracedHooks(opts.hooks, tracer, opts.clock) : opts.hooks;
@@ -663,6 +709,10 @@ export function createHarnessRuntime(opts: HarnessRuntimeOptions): HarnessRuntim
         parameters: toolParametersJsonSchema(t) as Readonly<Record<string, unknown>>,
       })),
     ...(opts.mcp?.tools ?? []),
+    // The in-process tools (TL-02) are advertised in EVERY profile/mode: both are read-only /
+    // interaction and change nothing on the host, so `plan` and the restricted prompt-modes (IN-09)
+    // include them too. Their execution is still judged by the same policy engine (see the composite).
+    ...(opts.inProcess?.tools ?? []),
     ...(opts.extraTools ?? []),
   ];
 

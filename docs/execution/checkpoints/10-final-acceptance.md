@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **125** |
-| IN_PROGRESS | 83 | 24 |
+| **VERIFIED** | 38 | **126** |
+| IN_PROGRESS | 83 | 23 |
 | REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -27,7 +27,7 @@ assessment, not a completion claim; incomplete items are marked incomplete.
 
 | # | Item | Status | Evidence / why |
 |---|---|---|---|
-| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 125/178** | 53 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
+| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 126/178** | 52 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
 | 2 | 10 golden paths pass | **DONE** | All ten cross-capability golden paths run as committed executed tests (this file, "All ten … golden paths pass"; `evals/e2e/*`). |
 | 3 | `pnpm check` passes clean from a committed tree | **DONE (continuously)** | Verified before every one of this session's commits; the gate baseline above. |
 | 4 | `pnpm test:live` green vs `qwen3.7-max` | **NOT GREEN** | Ran and is not fully green (§ below): model non-determinism on the coding-loop/compaction live cases. Requires live-model tuning; no offline substitute. |
@@ -856,6 +856,29 @@ turn still fires Stop, AND a cancelled turn still fires Stop last), E (NEW `eval
 — deterministic end-to-end, nothing about the engine mocked). No existing test was modified or weakened;
 the only source changes are additive (new optional dep, two observe-only fires, one exported constant).
 Full `pnpm check` passes.
+
+**TL-02 (built-in tool coverage) is now VERIFIED — the two missing built-ins (`user interaction` and
+`output retrieval`) were built via a new IN-PROCESS tool-execution path.** Every other built-in runs in
+the sandbox worker; these two cannot (`retrieve_output` needs the durable blob store, `ask_user` needs a
+live user channel). So `apps/cli/src/in-process-tools.ts` adds a THIRD `ToolExecutor` and
+`compositeExecutor` (`wiring.ts`) became a 3-way router with precedence in-process → MCP → sandbox. The
+security design is the point: (1) the in-process allowlist is a FROZEN, CLOSED set of exactly
+`{retrieve_output, ask_user}` — no wildcard, no prefix — so the model can never make an arbitrary name
+run outside the sandbox; (2) it is an ORDINARY executor, so the engine wraps it in the identical
+hook→policy→approval→persist order (no privileged path — the engine, not this file, owns ordering); (3)
+`evaluate` runs the SAME `PolicyEngine` instance the built-ins/MCP use over a conservative workspace
+`file-read`, a genuine allow/ask/deny, never a hardcoded allow; (4) `retrieve_output` reads ONLY
+`EventStore.readBlob(digest)` — it has no way to name a filesystem path (a path-shaped ref is just a
+missing digest lookup). `ask_user` uses a new injected `UserInteraction` channel (a terminal prompt in
+interactive runs, `null` — never a fabricated answer — when headless), deliberately NOT squeezed through
+`ApprovalDecision`. Classes (all four the row declares): U (`apps/cli/test/unit/in-process-tools.test.ts`,
+8 tests — each tool's hit/miss/no-channel paths), S (`apps/cli/test/security/in-process-tools.test.ts`,
+7 tests — the closed allowlist proven by `retrieve_output_evil`/`run_shell`/`write_file` all falling
+through to the sandbox, the `/etc/passwd`-ref-reads-no-file proof, and a deny rule genuinely flipping
+`evaluate`), I (`apps/cli/test/integration/in-process-tools.test.ts`, 3 tests — both tools run through a
+real `TurnEngine` with the normal gating), E (`evals/e2e/retrieve-output.test.ts` — a real `main()` turn
+offloads a large read then retrieves it by ref). No existing test or non-wiring source was modified. Full
+`pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
