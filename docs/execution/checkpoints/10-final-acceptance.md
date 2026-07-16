@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **103** |
+| **VERIFIED** | 38 | **104** |
 | IN_PROGRESS | 83 | 36 |
-| REQUIRED | 57 | 39 |
+| REQUIRED | 57 | 38 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -505,8 +505,19 @@ The audit found the gaps cluster into a small number of systemic causes, not 140
    UI-02..UI-18 (most), WK-01/08/09, AG-09/14, BG-02/06, CR-04, GT-04, CX-01/06, MM-01, OB-03.
 4. **`tools-builtin` / `tools-core` have essentially no unit tests**, so every tools row's `U` class
    leans on e2e — blocking TL-01/03/04/05/07/12 on `U`.
+**TL-10 (durable tool-output offload) is now VERIFIED.** The offload was already implemented
+(`context.ts` writes any tool output over 4096 chars to the durable blob store under a content-digest
+key `blb_<hash>`, leaving a bounded preview inline; `reduction.ts` has the U and the compaction
+integration test drives the real offload). Added the two missing classes: **S**
+(`packages/storage/test/security/blob-addressing.test.ts` — a blob is retrieved ONLY by its exact
+digest, and a path/traversal string is never a valid key, so an offloaded reference can never become a
+read of `../../etc/passwd` even when the tool output IS a path string) and **E**
+(`evals/e2e/tool-output-offload.test.ts` — a real `main()` run reads six distinct large files; old
+results fall past the recent window and their payloads land in the blob store, while the durable
+tool-results stay intact). The full `pnpm check` passes.
+
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
-   WebFetch/WebSearch (TL-13), a destructive-git tool (TL-06), durable tool-output offload (TL-10),
+   WebFetch/WebSearch (TL-13), a destructive-git tool (TL-06),
    early tool start while streaming (TL-09), turn steering (RT-07), `previous_response_id`
    continuation (PV-08), output-length continuation (ER-01), automatic post-turn memory extraction
    (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)

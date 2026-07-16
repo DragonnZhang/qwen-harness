@@ -72,7 +72,7 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 | TL-07 | Tool arguments pass schema validation -> semantic validation -> hard policy -> pre hooks -> permission -> sandbox -> execution. No alternate path bypasses this pipeline. | U,P,I,S | VERIFIED |
 | TL-08 | Multiple calls are partitioned in original order into safe parallel batches and serial side-effect batches based on actual arguments and resource conflicts. | U,P,I,F | VERIFIED |
 | TL-09 | Fully assembled safe calls may start while the model continues streaming, while persistence and ordering prevent early-execution duplication. | U,I,F,L | REQUIRED |
-| TL-10 | Oversized output is sanitized, durably offloaded, and represented by a bounded preview plus a retrievable reference. | U,I,S,E | REQUIRED |
+| TL-10 | Oversized output is sanitized, durably offloaded, and represented by a bounded preview plus a retrievable reference. | U,I,S,E | VERIFIED |
 | TL-11 | ANSI, OSC, terminal title, clipboard, hyperlink, and control-sequence content from tools is untrusted and cannot forge TUI chrome or approvals. | U,P,S,T | VERIFIED |
 | TL-12 | Tool results use a stable success/error shape with machine-readable categories, user-safe text, model-safe text, provenance, duration, truncation, and audit identity. | U,I | VERIFIED |
 | TL-13 | Permissioned WebFetch and WebSearch validate schemes/domains/redirects/content types, limit downloads, respect network policy, sanitize untrusted content, and have a real configured provider or provider-native path plus local fixtures. | U,P,I,S,E,L | IN_PROGRESS |
