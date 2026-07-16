@@ -13,6 +13,7 @@ import { DEFAULT_BUDGET, type BudgetLimits } from '@qwen-harness/runtime';
 import type { EventStore } from '@qwen-harness/storage';
 import type { BuiltinTool } from '@qwen-harness/tools-builtin';
 
+import type { FireHook } from './hooks.ts';
 import type { DelegatePort } from './in-process-tools.ts';
 import { headlessUserInteraction, inProcessSurface } from './in-process-tools.ts';
 import type { RunAuthority } from './policy-from-config.ts';
@@ -65,6 +66,12 @@ export interface SubagentRuntimeDeps {
   /** The mode-restricted built-in set the parent runs, so a child cannot see a tool the parent lost. */
   readonly builtins?: readonly BuiltinTool[];
   readonly limits?: SubagentBudgetLimits;
+  /**
+   * Guarded, observe-only hook fire (HK-01). SubagentStart fires immediately BEFORE a child turn runs
+   * and SubagentStop immediately AFTER, from the runner that owns the child's id and outcome. It is a
+   * plain callback so `@qwen-harness/agents` never learns about hooks; it cannot gate the child.
+   */
+  readonly fireHook?: FireHook;
 }
 
 /**
@@ -222,6 +229,12 @@ export function createSubagentRunner(
         ...(deps.provider ? { provider: deps.provider } : {}),
       });
 
+      // SubagentStart (HK-01): the child turn is about to run. Observe-only and guarded upstream.
+      await deps.fireHook?.('SubagentStart', {
+        agentId: input.agentId,
+        threadId: String(childThreadId),
+      });
+
       let outcome;
       try {
         outcome = await childRuntime.runTurn({
@@ -234,6 +247,7 @@ export function createSubagentRunner(
         });
       } catch (err) {
         // A genuinely broken runtime is a normal child failure, not a thrown runner: report ok:false.
+        await deps.fireHook?.('SubagentStop', { agentId: input.agentId, ok: false });
         return {
           ok: false,
           summary: `subagent failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -243,6 +257,8 @@ export function createSubagentRunner(
 
       const modelCalls = countModelCalls(deps.store, childThreadId);
       if (outcome.state === 'completed') {
+        // SubagentStop (HK-01): the child finished cleanly.
+        await deps.fireHook?.('SubagentStop', { agentId: input.agentId, ok: true });
         return {
           ok: true,
           summary: outcome.finalText || '(subagent produced no text)',
@@ -250,6 +266,11 @@ export function createSubagentRunner(
         };
       }
       // A non-clean end is a child failure the parent can read and keep going from.
+      await deps.fireHook?.('SubagentStop', {
+        agentId: input.agentId,
+        ok: false,
+        state: outcome.state,
+      });
       const reason = outcome.reason ?? outcome.state;
       const summary = outcome.finalText
         ? `${outcome.finalText}\n[subagent ended ${outcome.state}: ${reason}]`

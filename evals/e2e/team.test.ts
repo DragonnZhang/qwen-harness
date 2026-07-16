@@ -260,4 +260,69 @@ describe('checkpoint-10 golden path 5: team execution (real processes, isolated 
     expect(parsed.members).toHaveLength(2);
     expect(parsed.members.every((m) => m.state === 'stopped')).toBe(true);
   });
+
+  // -------------------------------------------------------------------------------------------
+  // HK-01: TeammateIdle (fired in a teammate process when it waits for work) and WorktreeRemove
+  // (fired in the LEAD process when it removes a teammate's worktree). The hook config is COMMITTED,
+  // so every teammate's worktree — a checkout of HEAD — carries it; markers are written to the lead
+  // repo (absolute paths) so they survive worktree removal. This proves both events fire in real,
+  // separate processes at their honest sites.
+  // -------------------------------------------------------------------------------------------
+  it('fires TeammateIdle (teammate) and WorktreeRemove (lead) during a real team run (HK-01)', async () => {
+    const git = (...a: string[]): void => {
+      execFileSync('git', a, { cwd: repo, stdio: ['ignore', 'ignore', 'ignore'] });
+    };
+    const hookScript = (event: string): string => {
+      const p = join(repo, `.qwen-harness`, `hook-${event}.sh`);
+      writeFileSync(
+        p,
+        `#!/bin/sh\ncat > /dev/null\ntouch '${join(repo, `${event}.marker`)}'\nexec echo '{"type":"continue"}'\n`,
+        { mode: 0o755 },
+      );
+      return p;
+    };
+    execFileSync('mkdir', ['-p', join(repo, '.qwen-harness')]);
+    writeFileSync(
+      join(repo, '.qwen-harness', 'hooks.json'),
+      JSON.stringify({
+        version: 1,
+        hooks: [
+          {
+            id: 'idle',
+            event: 'TeammateIdle',
+            handler: { type: 'command', command: hookScript('TeammateIdle') },
+          },
+          {
+            id: 'wt-rm',
+            event: 'WorktreeRemove',
+            handler: { type: 'command', command: hookScript('WorktreeRemove') },
+          },
+        ],
+      }),
+    );
+    // Commit the hook config so each teammate's worktree (a fresh checkout of HEAD) carries it.
+    git('add', '-A');
+    git('commit', '--quiet', '-m', 'hooks');
+
+    // Dependent tasks force a teammate to wait: while t1 is worked, t2 (blockedBy t1) is unclaimable.
+    const run = await runCli(repo, [
+      'team',
+      'run',
+      '--team',
+      'delta',
+      '--members',
+      '3',
+      '--tasks',
+      JSON.stringify([{ subject: 't1' }, { subject: 'R:t2', blockedBy: [1] }]),
+      '--profile',
+      'auto-accept-edits',
+      '--json',
+    ]);
+    expect(run.code, `stderr=${run.stderr}`).toBe(0);
+
+    // WorktreeRemove fired in the lead as it cleaned up each teammate's worktree.
+    expect(existsSync(join(repo, 'WorktreeRemove.marker')), 'WorktreeRemove fired').toBe(true);
+    // TeammateIdle fired in a teammate process that waited for the blocked task to unblock.
+    expect(existsSync(join(repo, 'TeammateIdle.marker')), 'TeammateIdle fired').toBe(true);
+  });
 });

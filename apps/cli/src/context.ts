@@ -26,6 +26,8 @@ import type { ModelInputItem } from '@qwen-harness/provider-core';
 import type { ContextManager, ContextPreparation } from '@qwen-harness/runtime';
 import type { EventStore } from '@qwen-harness/storage';
 
+import type { FireHook } from './hooks.ts';
+
 /**
  * The CLI's context manager (CX-01..CX-06): the composition that finally makes
  * `@qwen-harness/context` reachable from a turn.
@@ -78,6 +80,13 @@ export interface ContextManagerOptions {
   /** Observers, for reporting and telemetry. */
   readonly onUtilization?: (utilization: number) => void;
   readonly onCompaction?: (result: CompactionResult) => void;
+  /**
+   * Guarded, observe-only hook fire (HK-01). PreCompact fires HERE — immediately before a compaction
+   * actually runs — symmetric to the PostCompact the turn engine fires after `prepare` reports a
+   * compaction happened. It is threaded as a plain callback so `@qwen-harness/context` never learns
+   * about hooks; it can neither change what is compacted nor whether compaction proceeds.
+   */
+  readonly fireHook?: FireHook;
 }
 
 /**
@@ -221,6 +230,11 @@ export function createContextManager(options: ContextManagerOptions): ContextMan
       }
 
       const trigger: CompactionTrigger = budget.overCapacity ? 'reactive-overflow' : 'proactive';
+
+      // A real compaction is about to run (over threshold, with an old span to compact). Fire
+      // PreCompact BEFORE it, symmetric to the turn engine's PostCompact after. The callback is
+      // guarded upstream, so a throwing hook cannot derail the compaction that follows.
+      await options.fireHook?.('PreCompact', { trigger, items: head.length });
 
       try {
         const boundaryStore = eventStoreBoundaryStore({

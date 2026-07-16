@@ -4,6 +4,7 @@ import type { NormalizedAction, PolicyContext, PolicyEngine } from '@qwen-harnes
 import type { ToolEvaluation, ToolExecutionResult, ToolExecutor } from '@qwen-harness/runtime';
 import { z } from 'zod';
 
+import type { FireHook } from './hooks.ts';
 import type { InProcessSurface, ModelTool } from './wiring.ts';
 
 /**
@@ -160,6 +161,12 @@ export function inProcessExecutor(opts: {
    * with `unsupported` rather than escalating — defence in depth, same as an unknown name.
    */
   delegate?: DelegatePort;
+  /**
+   * Guarded, observe-only hook fire (HK-01). `ask_user` is a genuine ELICITATION: the system asks the
+   * human for input. Elicitation fires before the prompt, ElicitationResult after it resolves (with
+   * whether an answer came back or the channel declined). Observe-only — it never changes the answer.
+   */
+  fireHook?: FireHook;
 }): ToolExecutor {
   const failure = (category: string, message: string, durationMs: number): ToolExecutionResult => ({
     ok: false,
@@ -264,10 +271,20 @@ export function inProcessExecutor(opts: {
             done(),
           );
         }
+        // Elicitation (HK-01): the system is about to ask the human a question. Observe-only.
+        await opts.fireHook?.('Elicitation', {
+          source: 'ask_user',
+          question: parsed.data.question,
+        });
         // A blocking prompt is fine here: durability of an in-flight question is OUT OF SCOPE for
         // TL-02 (a coverage claim, not a durability claim). The abort signal is honoured by the
         // channel implementation.
         const answer = await opts.userInteraction.ask(parsed.data.question, call.signal);
+        // ElicitationResult (HK-01): the question resolved — either an answer or a declined channel.
+        await opts.fireHook?.('ElicitationResult', {
+          source: 'ask_user',
+          answered: answer !== null,
+        });
         if (answer === null) {
           return failure(
             'unsupported',

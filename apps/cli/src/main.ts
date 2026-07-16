@@ -25,7 +25,7 @@ import { createWorktree, WorktreeError } from '@qwen-harness/worktrees';
 import { interactiveApprovalGate } from './approvals.ts';
 import { contextUtilizationPercent, createContextManager } from './context.ts';
 import { runDoctor } from './doctor.ts';
-import { createHookRuntime, loadHooks } from './hooks.ts';
+import { createHookRuntime, loadHooks, observeHook, type FireHook } from './hooks.ts';
 import { composePrompt, loadGuidance } from './instructions.ts';
 import { connectMcp, loadMcpConfiguration, trustServer } from './mcp.ts';
 import { createMemorySurface, memorySectionState } from './memory.ts';
@@ -236,7 +236,7 @@ export async function main(deps: CliDeps): Promise<number> {
   }
 
   if (command === 'task') {
-    return taskCommand(deps, rest);
+    return await taskCommand(deps, rest);
   }
 
   if (command === 'background') {
@@ -393,9 +393,14 @@ async function runCommand(
   // under the repo. The worktree persists after the run for inspection; "exit" is `git worktree
   // remove` (or the `worktrees` recovery path), never a silent discard of work.
   let sessionWorkspace = deps.cwd;
+  // Recorded here (before the hook runtime exists) so WorktreeCreate / CwdChanged can be fired once
+  // the runtime is constructed below — the FACT is captured at the true site, the observe-only fire
+  // happens as soon as there is something to fire it through.
+  let enteredWorktree: { branch: string; path: string; from: string } | null = null;
   if (flags['worktree'] !== undefined) {
     try {
       const wt = createWorktree({ repoRoot: deps.cwd, slug: flags['worktree'], now: deps.now() });
+      enteredWorktree = { branch: wt.branch, path: wt.path, from: sessionWorkspace };
       sessionWorkspace = wt.path;
       if (!quiet) deps.stderr(`note: session entered worktree ${wt.branch} at ${wt.path}`);
     } catch (e) {
@@ -528,10 +533,37 @@ async function runCommand(
         }),
     });
 
+    // The guarded, observe-only fire callback for the orchestration sites outside the turn engine.
+    const fireHook = observeHook(hooks);
+
     // The very first run in this workspace fires Setup once (HK-01) — a hook can do one-time
     // provisioning before anything else happens.
     if (firstRun && hooks !== null) {
       await hooks.fire('Setup', { data: { workspace: deps.cwd } });
+    }
+
+    // A `--worktree` session genuinely created a worktree and moved this session's working directory
+    // into it (GT-02). Fire WorktreeCreate and CwdChanged now that the hook runtime exists — the
+    // creation/move already happened above; these observe-only events report it.
+    if (enteredWorktree !== null) {
+      await fireHook?.('WorktreeCreate', {
+        branch: enteredWorktree.branch,
+        path: enteredWorktree.path,
+      });
+      await fireHook?.('CwdChanged', { from: enteredWorktree.from, to: enteredWorktree.path });
+    }
+
+    // A prompt mode other than the default is a genuine configuration change for this run (IN-09):
+    // `--prompt-mode` activates a mode that changes the model's tool visibility. ConfigChange reports
+    // it (permission/isolation are unchanged — a mode is prompt text and tool visibility, never
+    // authority). Observe-only; the mode was already selected above.
+    if (flags['prompt-mode'] !== undefined) {
+      await fireHook?.('ConfigChange', {
+        key: 'prompt-mode',
+        to: promptMode,
+        permissionChanged: false,
+        isolationChanged: false,
+      });
     }
 
     // --- repository instructions (IN-06) ------------------------------------------------------
@@ -640,6 +672,7 @@ async function runCommand(
       parentModelCalls: DEFAULT_BUDGET.maxModelCallsPerTurn,
       parentWallMs: DEFAULT_BUDGET.maxWallMs,
       ...(deps.provider ? { provider: deps.provider } : {}),
+      ...(fireHook ? { fireHook } : {}),
     });
     const inProcess = inProcessSurface({
       blob: store,
@@ -649,6 +682,7 @@ async function runCommand(
       workspaceRoot: sessionWorkspace,
       clock: { now: deps.now },
       delegate: delegateSurface.delegate,
+      ...(fireHook ? { fireHook } : {}),
     });
 
     // --- the system prompt (IN-07/IN-08/IN-10) -------------------------------------------------
@@ -719,6 +753,7 @@ async function runCommand(
       clock,
       ids: realIds,
       actor: MODEL_ACTOR,
+      ...(fireHook ? { fireHook } : {}),
     });
 
     const runtime = createHarnessRuntime({
@@ -764,7 +799,16 @@ async function runCommand(
           managed: authority.managedPolicy,
           toolNames,
         });
+        const before = userText.length;
         userText = `${invocation.content}\n\n---\n\n${prompt}`.trim();
+        // UserPromptExpansion (HK-01): a skill just expanded the user's prompt before the turn runs.
+        // Observe-only — the expanded text is already assembled; the hook merely observes that it was.
+        await fireHook?.('UserPromptExpansion', {
+          kind: 'skill',
+          name: skillName,
+          charsBefore: before,
+          charsAfter: userText.length,
+        });
       } catch (e) {
         deps.stderr(`run: ${e instanceof Error ? e.message : String(e)}`);
         return 1;
@@ -811,6 +855,14 @@ async function runCommand(
     try {
       const backgroundConclusions = await delegateSurface.supervisor.joinAll();
       for (const c of backgroundConclusions) {
+        // A settled background task is exactly the canonical Notification (HK-01): the system informs
+        // the user that work they were not awaiting has completed. Observe-only.
+        await fireHook?.('Notification', {
+          kind: 'background-subagent-settled',
+          agentId: c.agentId,
+          label: c.label,
+          ok: c.ok,
+        });
         if (!quiet) {
           deps.stderr(
             `note: background subagent ${c.label} (${c.agentId}) finished ` +
@@ -876,6 +928,11 @@ async function runCommand(
         );
       }
     } else {
+      // MessageDisplay (HK-01): the assistant's final text is about to be rendered to the user.
+      // Observe-only — fired only when there is genuine assistant text to display.
+      if (result.finalText) {
+        await fireHook?.('MessageDisplay', { chars: result.finalText.length });
+      }
       deps.stdout(result.finalText || '(no text output)');
       // The trailing status line duplicates the exit code (and the JSON `state`/`reason`); drop it
       // under `--quiet` so a machine caller's stderr carries only genuine errors.
@@ -1339,6 +1396,23 @@ function openStore(deps: CliDeps): EventStore {
   });
 }
 
+/**
+ * The guarded, observe-only hook fire for a standalone durable-work command (e.g. `task`). Mirrors the
+ * `run` path's hook construction so an event fired here goes through the SAME real engine — a
+ * configured hook actually runs — rather than a test-only stub. Returns `undefined` when no hooks are
+ * declared, so the command pays nothing when hooks are absent.
+ */
+function commandFireHook(deps: CliDeps): FireHook | undefined {
+  const loaded = loadHooks({ workspaceRoot: deps.cwd, homeDir: homedir() });
+  const runtime = createHookRuntime({
+    registrations: loaded.registrations,
+    clock: clockOf(deps),
+    env: deps.env,
+    correlationId: realIds.next('cor'),
+  });
+  return observeHook(runtime);
+}
+
 /** Load the run authority (the managed ceiling) for a durable-work command, honouring `--profile`. */
 function authorityForCommand(
   deps: CliDeps,
@@ -1382,7 +1456,7 @@ function splitDoubleDash(args: readonly string[]): { pre: string[]; post: string
 }
 
 /** `task ...` — the durable dependency graph plus the ephemeral todo normalizer (WK-01..WK-08). */
-function taskCommand(deps: CliDeps, args: readonly string[]): number {
+async function taskCommand(deps: CliDeps, args: readonly string[]): Promise<number> {
   const { flags, positional } = parseFlags(args);
   const asJson = 'json' in flags;
   const [sub, ...rest] = positional;
@@ -1407,6 +1481,7 @@ function taskCommand(deps: CliDeps, args: readonly string[]): number {
   }
 
   const store = openStore(deps);
+  const fireHook = commandFireHook(deps);
   try {
     const graph = openTaskGraph(store, clockOf(deps));
     switch (sub) {
@@ -1424,12 +1499,16 @@ function taskCommand(deps: CliDeps, args: readonly string[]): number {
                 .map((s) => Number(s.trim()))
                 .filter((n) => Number.isInteger(n))
             : [];
-        const task = createTask(graph, {
-          subject,
-          activeForm,
-          ...(flags['desc'] !== undefined ? { description: flags['desc'] } : {}),
-          ...(blockedBy.length > 0 ? { blockedBy } : {}),
-        });
+        const task = await createTask(
+          graph,
+          {
+            subject,
+            activeForm,
+            ...(flags['desc'] !== undefined ? { description: flags['desc'] } : {}),
+            ...(blockedBy.length > 0 ? { blockedBy } : {}),
+          },
+          fireHook,
+        );
         deps.stdout(asJson ? JSON.stringify(task) : renderTask(task));
         return 0;
       }
@@ -1486,7 +1565,8 @@ function taskCommand(deps: CliDeps, args: readonly string[]): number {
           deps.stderr(`task ${sub}: a task id is required`);
           return 1;
         }
-        const result = sub === 'complete' ? completeTask(graph, id) : deleteTask(graph, id);
+        const result =
+          sub === 'complete' ? await completeTask(graph, id, fireHook) : deleteTask(graph, id);
         if (asJson) {
           deps.stdout(JSON.stringify(result));
         } else {
@@ -1843,12 +1923,14 @@ async function teamCommand(deps: CliDeps, args: readonly string[]): Promise<numb
   const store = openStore(deps);
   try {
     const authority = authorityForCommand(deps, flags);
+    const teamFireHook = commandFireHook(deps);
     const teamDeps: TeamDeps = {
       store,
       ids: realIds,
       clock: clockOf(deps),
       homeDir: homedir(),
       cwd: deps.cwd,
+      ...(teamFireHook ? { fireHook: teamFireHook } : {}),
     };
 
     if (sub === 'teammate') {

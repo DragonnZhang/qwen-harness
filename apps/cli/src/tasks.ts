@@ -8,6 +8,8 @@ import {
 import type { Actor, Clock } from '@qwen-harness/protocol';
 import { TaskStore, type EventStore } from '@qwen-harness/storage';
 
+import type { FireHook } from './hooks.ts';
+
 /**
  * The durable task graph and the turn-local todo checklist, made reachable from the CLI
  * (WK-01..WK-08).
@@ -31,8 +33,19 @@ export function openTaskGraph(store: EventStore, clock: Clock): TaskGraph {
   return new TaskGraph({ store: new TaskStore({ store, clock }) });
 }
 
-export function createTask(graph: TaskGraph, input: CreateTaskInput): Task {
-  return graph.create(input, TASK_ACTOR);
+/**
+ * Create a durable task. TaskCreated (HK-01) fires from THIS CLI wrapper — never from inside the
+ * `@qwen-harness/tasks` domain package — after the task is durably created, so a hook can observe a
+ * genuine new task. `fireHook` is guarded and observe-only: it cannot change or veto the created task.
+ */
+export async function createTask(
+  graph: TaskGraph,
+  input: CreateTaskInput,
+  fireHook?: FireHook,
+): Promise<Task> {
+  const task = graph.create(input, TASK_ACTOR);
+  await fireHook?.('TaskCreated', { id: task.id, subject: task.subject });
+  return task;
 }
 
 export function listTasks(graph: TaskGraph, includeDeleted: boolean): Task[] {
@@ -56,11 +69,21 @@ export function startTask(graph: TaskGraph, id: number): Task {
   return graph.start(id, TASK_ACTOR);
 }
 
-export function completeTask(
+/**
+ * Complete a durable task. TaskCompleted (HK-01) fires from THIS CLI wrapper after the transition,
+ * observe-only and guarded — it cannot un-complete the task or alter which tasks it unblocked.
+ */
+export async function completeTask(
   graph: TaskGraph,
   id: number,
-): { task: Task; newlyUnblocked: readonly Task[] } {
-  return graph.complete(id, TASK_ACTOR);
+  fireHook?: FireHook,
+): Promise<{ task: Task; newlyUnblocked: readonly Task[] }> {
+  const result = graph.complete(id, TASK_ACTOR);
+  await fireHook?.('TaskCompleted', {
+    id: result.task.id,
+    unblocked: result.newlyUnblocked.map((t) => t.id),
+  });
+  return result;
 }
 
 export function releaseTask(graph: TaskGraph, id: number): Task {

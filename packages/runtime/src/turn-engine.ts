@@ -1508,6 +1508,18 @@ export class TurnEngine {
     reason: TerminationReason,
   ): Promise<void> {
     if (this.#deps.hooks?.fireLifecycle) {
+      // A NON-clean ending additionally fires StopFailure (HK-01), distinct from the `Stop` that fires
+      // on every terminal path. `completed` is the only clean state; every other terminal state
+      // (failed/cancelled/blocked/budget-exhausted) is a stop-with-failure. It fires BEFORE `Stop` so
+      // the RT-05 invariant — `Stop` is the FINAL phase of every ending — still holds. Observe-only
+      // and separately guarded, so it can never gate or corrupt an already-ended turn.
+      if (state !== 'completed') {
+        try {
+          await this.#deps.hooks.fireLifecycle('StopFailure', { state, reason });
+        } catch {
+          // Observe-only: a throwing StopFailure hook must never corrupt an already-ended turn.
+        }
+      }
       try {
         await this.#deps.hooks.fireLifecycle('Stop', { state, reason });
       } catch {

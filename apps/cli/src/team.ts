@@ -41,6 +41,7 @@ import {
 } from '@qwen-harness/worktrees';
 
 import { buildBackgroundPipeline, runSandboxedShell, type ShellWorkload } from './background.ts';
+import type { FireHook } from './hooks.ts';
 import type { RunAuthority } from './policy-from-config.ts';
 import { authorityOf, preapprovalRule } from './scheduler.ts';
 
@@ -409,6 +410,12 @@ export interface TeamDeps {
   readonly clock: Clock;
   readonly homeDir: string;
   readonly cwd: string;
+  /**
+   * Guarded, observe-only hook fire (HK-01). TeammateIdle fires when a teammate's loop waits for
+   * work; WorktreeRemove fires when the lead removes a teammate's worktree. Both are plain-callback
+   * observers — the team packages never learn about hooks, and neither event can gate coordination.
+   */
+  readonly fireHook?: FireHook;
 }
 
 /** Ensure the durable team thread exists. */
@@ -664,6 +671,12 @@ export async function runLead(
       // removal is an explicit, audited discard (GT-04) rather than a silent delete.
       removeWorktree({ repoRoot: deps.cwd, record: child.worktree, discard: true });
       removed = true;
+      // WorktreeRemove (HK-01): the worktree is gone. Observe-only, fired after the real removal.
+      await deps.fireHook?.('WorktreeRemove', {
+        path: child.worktree.path,
+        member: child.member,
+        wasDirty: dirty,
+      });
     }
     memberSummaries.push({
       member: child.member,
@@ -1063,6 +1076,8 @@ export async function runTeammate(deps: TeamDeps, opts: TeammateOptions): Promis
       .every((t) => t.status === 'completed' || t.status === 'deleted');
     if (allTerminal) break;
     if (controller.signal.aborted) break;
+    // TeammateIdle (HK-01): this teammate found no claimable work and is about to wait. Observe-only.
+    await deps.fireHook?.('TeammateIdle', { member: opts.member, incarnation: opts.incarnation });
     await deps.clock.sleep(POLL_MS);
   }
 

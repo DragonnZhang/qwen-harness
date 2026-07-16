@@ -213,6 +213,37 @@ export interface HookRuntime {
 }
 
 /**
+ * A guarded, observe-only fire callback for the ORCHESTRATION sites outside the turn engine
+ * (subagent runner, context compaction, tasks, team, in-process `ask_user`, and the direct main.ts
+ * lifecycle points). It threads the hook runtime into those sites as a plain function — the pure
+ * packages never see the CLI hook types — and it swallows any throw, exactly like the turn engine's
+ * `#fireStop`: an observe-only lifecycle hook must never corrupt the flow it observes.
+ */
+export type FireHook = (
+  event: HookEvent,
+  data?: Readonly<Record<string, unknown>>,
+) => Promise<void>;
+
+/** Build the guarded {@link FireHook}, or `undefined` when no hooks are registered (nothing to fire). */
+export function observeHook(runtime: HookRuntime | null): FireHook | undefined {
+  if (runtime === null) return undefined;
+  return async (event, data) => {
+    try {
+      await runtime.fire(event, data ? { data } : {});
+    } catch {
+      // Observe-only: a throwing hook must never corrupt the orchestration flow that fired it.
+    }
+  };
+}
+
+/** The built-in tools whose SUCCESSFUL result is a genuine file mutation (FileChanged, HK-01). */
+const FILE_MUTATING_TOOLS: ReadonlySet<string> = new Set([
+  'write_file',
+  'edit_file',
+  'apply_patch',
+]);
+
+/**
  * Build the hook runtime. `onFired` is called once per handler that actually ran, so the caller can
  * append the durable `hook-fired` event — the hook engine is a pure decision component and does not
  * own the event store.
@@ -275,6 +306,16 @@ export function createHookRuntime(opts: {
           toolName: call.toolName,
           data: { ok: call.ok },
         });
+        // A SUCCESSFUL file-mutating tool is a genuine file change (FileChanged, HK-01). Fired from
+        // the post-tool seam the CLI already owns, so the pure engine stays unaware of which tools
+        // touch files. Observe-only and guarded: it never affects `stopContinuation`.
+        if (call.ok && FILE_MUTATING_TOOLS.has(call.toolName)) {
+          try {
+            await run('FileChanged', { toolName: call.toolName, data: { tool: call.toolName } });
+          } catch {
+            // Observe-only: a throwing FileChanged hook must not corrupt the completed tool result.
+          }
+        }
         // The engine keeps the completed tool result durable regardless; `stopped` only decides
         // whether the turn continues to another model round (HK-05, `resultDurable`).
         return { stopContinuation: result.stopped };
