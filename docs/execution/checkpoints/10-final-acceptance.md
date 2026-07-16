@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **120** |
+| **VERIFIED** | 38 | **121** |
 | IN_PROGRESS | 83 | 27 |
-| REQUIRED | 57 | 31 |
+| REQUIRED | 57 | 30 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -762,6 +762,19 @@ lands in the main checkout, so the flag — not the harness — redirects tool r
 (`evals/e2e/team.test.ts` — real teammate processes each resolve tools against their OWN worktree,
 files landing there never in the lead workspace). The flag is opt-in, so every existing run is
 unchanged. Full `pnpm check` passes.
+
+**CX-05 (compaction restores goal/state + reattaches skills) is now VERIFIED — implemented-but-under-
+tested, not a gap.** I had earlier suspected the "reattach recent skills at 5K each / 25K total"
+clause was unbuilt; it is exactly `DEFAULT_SKILL_BUDGETS` in `packages/skills/src/registry.ts`
+(`perSkillTokens: 5_000`, `totalLoadedTokens: 25_000`, with the frozen comment "Reattach at most
+5,000 tokens per recently used skill and 25,000 tokens total"). Evidence: U+F (NEW
+`packages/context/src/preservation.test.ts` — the preservation contract requires a non-empty goal and
+every state list, offers NO field a summarizer could set to fake completion, and REJECTS a summary
+that drops the goal, fail-closed) plus the skill-budget truncation (`registry.test.ts` — a body over
+the per-skill budget is truncated WITH a signal, never silently dropped), I+E
+(`apps/cli/test/integration/compaction.test.ts`, already CX-05-tagged — the REAL `TurnEngine` grows
+the transcript with tool output, compacts, and preserves goal/constraints/tasks/files, and does not
+thrash on a short turn). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
