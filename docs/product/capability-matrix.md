@@ -294,7 +294,7 @@ These capabilities are required to make every timeline feature usable rather tha
 | OB-03 | Doctor reports environment, config provenance, provider capabilities, credential presence without value, sandbox, terminal, Git, MCP, storage, migrations, and known degradation. | U,I,S,T,D | IN_PROGRESS |
 | SC-01 | Adversarial suite covers malicious repository instructions, secret exfiltration, path/symlink escape, shell indirection, package/Git hooks, MCP abuse, ANSI/OSC spoofing, approval confusion, and resource exhaustion. | P,I,S,E | REQUIRED |
 | SC-02 | Repository content is untrusted context and cannot elevate tools, policy, network, secret access, hooks, skills, or managed configuration. | U,P,I,S | VERIFIED |
-| SC-03 | Audit records actor, normalized action, policy inputs, decision, grant scope, sandbox, result identity, and redacted errors for every side effect. | U,P,I,S | REQUIRED |
+| SC-03 | Audit records actor, normalized action, policy inputs, decision, grant scope, sandbox, result identity, and redacted errors for every side effect. | U,P,I,S | VERIFIED |
 | QL-01 | Root scripts provide format, lint, typecheck, unit, integration, security, PTY, E2E, live, build, architecture, and aggregate check gates. | I,E,D | IN_PROGRESS |
 | QL-02 | CI runs deterministic gates from a clean clone with locked dependencies, no network where avoidable, test sharding, artifacts, and failure diagnostics. | I,F,D | REQUIRED |
 | QL-03 | Dependency direction, cycles, forbidden host I/O, package exports, schema compatibility, file-size/complexity guardrails, and docs links are mechanically checked. | U,I | IN_PROGRESS |

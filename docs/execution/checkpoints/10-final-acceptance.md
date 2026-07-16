@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **106** |
+| **VERIFIED** | 38 | **107** |
 | IN_PROGRESS | 83 | 36 |
-| REQUIRED | 57 | 36 |
+| REQUIRED | 57 | 35 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -538,6 +538,17 @@ git-tools.test.ts` — real `git_status` through the sandbox reports dirty state
 history cannot be rewritten through the tool surface), E (`evals/e2e/git-tools.test.ts` — a real
 `main()` run reads the dirty tree and reports the modified file, read-safely). The full `pnpm check`
 passes.
+
+**SC-03 (side-effect audit trail) is now VERIFIED.** The audit is the durable event log — every event
+carries an actor, and `policy-decision`/`side-effect-settled`/`tool-result` carry the normalized
+action, decision+source, result digest, and provenance — with the store's redactor scrubbing secrets
+on write. It had U (`tools-core/src/contract.test.ts` — a tool result carries full audit fields). Added
+I (`apps/cli/test/integration/audit-trail.test.ts` — a REAL sandboxed `write_file` leaves a complete
+attributed trail: actor, normalized action + decision, a settled result digest, and an attributed
+tool-result), S (`packages/storage/test/security/audit-redaction.test.ts` — a provider error echoing
+the credential in its message and request id is scrubbed in the durable audit, without deleting the
+failure record), and P (`packages/storage/src/redaction.property.test.ts` — the credential never
+survives `redactValue`, in any position or depth). The full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
