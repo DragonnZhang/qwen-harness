@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **123** |
-| IN_PROGRESS | 83 | 26 |
+| **VERIFIED** | 38 | **124** |
+| IN_PROGRESS | 83 | 25 |
 | REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -823,6 +823,18 @@ stream abort / tool abort / hook block / token-budget → the distinct `Terminat
 conditions each resolve to a distinct typed path), I (`packages/runtime/test/integration/turn-engine.test.ts`
 + the hook-stop/termination/oscillation engine tests drive these reasons end to end). Full `pnpm
 check` passes.
+
+**PS-01 (the four permission profiles, visible in every client) is now VERIFIED** — found by finally
+examining the T (PTY) rows I'd been skipping. Evidence: U (NEW
+`packages/protocol/src/profile-resolution.test.ts` — the profiles are exactly plan/ask/auto-accept-
+edits/yolo, every documented alias (default/manual→ask, acceptEdits→auto-accept-edits,
+bypassPermissions→yolo) maps onto one of them, and an unknown string resolves to `undefined`, never a
+silent permissive default), I (the policy suites enforce each profile's decisions —
+`auto-accept-edits.property.test.ts`, `managed-ceiling`), T (`apps/tui/test/pty/mode-switch.test.ts` —
+the shipped TUI status line renders the profile and Shift+Tab cycles ask→auto-accept-edits→yolo→plan
+LIVE over a real PTY, i.e. "current profile visible in every client"), E
+(`evals/e2e/permissions.test.ts` — one goal run in all four profiles, each enforcing differently).
+Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

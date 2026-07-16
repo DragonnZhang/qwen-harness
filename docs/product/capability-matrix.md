@@ -84,7 +84,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 
 | ID | Required behavior | Minimum evidence | Status |
 |---|---|---|---|
-| PS-01 | Profiles are `plan`, `ask`, `auto-accept-edits`, and `yolo`, with documented compatibility aliases where useful. Current profile is visible in every client. | U,I,T,E | IN_PROGRESS |
+| PS-01 | Profiles are `plan`, `ask`, `auto-accept-edits`, and `yolo`, with documented compatibility aliases where useful. Current profile is visible in every client. | U,I,T,E | VERIFIED |
 | PS-02 | `plan` exposes read/search/analysis only and enforces read-only isolation; unavailable mutations cannot be smuggled through shell, hooks, MCP, agents, or scripts. | U,P,I,S,E | VERIFIED |
 | PS-03 | `ask` prompts for normalized side effects and supports exact once, session, or narrowly matched grants with expiry and revocation. | U,P,I,S,T | VERIFIED |
 | PS-04 | `auto-accept-edits` auto-allows dedicated workspace file tools only; shell, executable/package/Git-hook edits, protected paths, network, MCP side effects, external paths, privilege, and destructive Git still ask. | U,P,I,S,T | VERIFIED |
