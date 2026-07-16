@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **122** |
+| **VERIFIED** | 38 | **123** |
 | IN_PROGRESS | 83 | 26 |
-| REQUIRED | 57 | 30 |
+| REQUIRED | 57 | 29 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
 
@@ -809,6 +809,20 @@ cancelled and does NOT silently allow), and escalation-safety (`test/security/ho
 — a hook can only tighten a decision). HK-02's [U,I,F,S] all hold. (Whether the CLI fires the
 `Notification` event is HK-01's separate event-coverage concern; a turn-flow notification DELIVERY
 queue is RT-05's.) Full `pnpm check` passes.
+
+**ER-04 (each error condition has a distinct typed path) is now VERIFIED — implemented-but-under-
+tested.** I had earlier suspected "image/media validation" was unbuilt (no multimodal input); it is
+the binary-content detection/rejection — `isBinary` (`tool-worker/handlers.ts`) detects a NUL-headed
+buffer and the read/edit tools `fail('binary-file', …)`, a distinct tool-error category. Every one of
+the seven conditions routes to its own typed path, proven in
+`apps/cli/test/unit/er04-error-taxonomy.test.ts` against the REAL classifiers: image/media →
+`binary-file` (+ `too-large`), overload → `retryable` (a 5xx) distinct from `user-action-required`
+(auth) and `permanent` (4xx) via `ruleForStatus`, unsupported → its own `unsupported` category, and
+stream abort / tool abort / hook block / token-budget → the distinct `TerminationReason` members
+`user-cancelled` / `hook-stop` / `token-limit` (never conflated). Classes: U+F (that file — injected
+conditions each resolve to a distinct typed path), I (`packages/runtime/test/integration/turn-engine.test.ts`
++ the hook-stop/termination/oscillation engine tests drive these reasons end to end). Full `pnpm
+check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
