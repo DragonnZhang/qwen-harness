@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **110** |
-| IN_PROGRESS | 83 | 35 |
+| **VERIFIED** | 38 | **111** |
+| IN_PROGRESS | 83 | 34 |
 | REQUIRED | 57 | 33 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -596,6 +596,24 @@ only that restriction lets `yolo` through, proving the deny came from hard polic
 (`apps/cli/test/integration/denial-no-upgrade.test.ts` — a real run whose model re-requests the
 identical denied write never lands it, records at least one policy decision but none `allow`, mints
 no grant, and terminates safely). Full `pnpm check` passes.
+
+**PS-08 (children/session/durable work inherit no more than their parent) is now VERIFIED.** The row
+is served by ONE invariant — authority derived by intersection — across three surfaces, so its
+evidence is partly dedicated and partly the existing tests that exercise the same invariant, cited
+honestly: P (`packages/policy/src/no-escalation.property.test.ts` — `intersect` never yields authority
+exceeding the parent ceiling or managed policy, 500 runs), U (`packages/scheduler/src/scheduler.test.ts`
+"intersects the captured ceiling with current managed policy and never widens"), I (NEW
+`packages/scheduler/test/integration/ps08-durable-authority.test.ts` — a DURABLE cron job captured
+under a wide `yolo` ceiling fires clamped by a managed policy tightened after its creation, proving
+durable work re-intersects with CURRENT managed at fire), S (NEW
+`packages/scheduler/test/security/ps08-no-escalation.test.ts` — over the full matrix of tightened
+managed policies, a captured `yolo` ceiling never escapes current hard policy), E
+(`evals/e2e/team.test.ts` — under managed `maxProfile: plan` a REAL teammate process is clamped to
+`plan` and its sandboxed shell denied, so a teammate can never exceed the lead/managed ceiling).
+(Observed but not fixed here: a durable RECURRING job reconstructed by a fresh `Scheduler` did not
+fire in a restart-then-fire test, while the same job fires before restart and one-shot durability
+round-trips fine — worth a dedicated look; PS-08's durable clause is proven via the fire-time
+re-intersection above, which does not depend on it.) Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
