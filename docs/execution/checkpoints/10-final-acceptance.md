@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **121** |
-| IN_PROGRESS | 83 | 27 |
+| **VERIFIED** | 38 | **122** |
+| IN_PROGRESS | 83 | 26 |
 | REQUIRED | 57 | 30 |
 
 ### Definition-of-done items 1–12 — honest status (consolidated)
@@ -795,6 +795,20 @@ the per-skill budget is truncated WITH a signal, never silently dropped), I+E
 (`apps/cli/test/integration/compaction.test.ts`, already CX-05-tagged — the REAL `TurnEngine` grows
 the transcript with tool output, compacts, and preserves goal/constraints/tasks/files, and does not
 thrash on a short turn). Full `pnpm check` passes.
+
+**HK-02 (hook handlers support all forms + attributes) is now VERIFIED.** My earlier "not flippable"
+call on the "async notification" clause conflated it with HK-01 (which components FIRE events) — but
+HK-02 is about HANDLER support, and `Notification` is a first-class `HookEvent` the engine dispatches
+asynchronously like any other. Added `packages/hooks/src/async-notification.test.ts` (a hook registered
+on `Notification` runs its async handler in deterministic order, does not fold a permission decision,
+and honors its content matcher). Combined with the rest: handler forms (`handler-forms.test.ts` —
+function/command/http/prompt/agent each dispatch; MCP is the deliberate "where applicable" exclusion,
+no MCP handler kind), matcher/condition + ordering (`registry.test.ts` + `fold.property.test.ts`),
+timeouts + cancellation (`test/integration/command-hook.test.ts` — a hook that sleeps too long is
+cancelled and does NOT silently allow), and escalation-safety (`test/security/hook-escalation.test.ts`
+— a hook can only tighten a decision). HK-02's [U,I,F,S] all hold. (Whether the CLI fires the
+`Notification` event is HK-01's separate event-coverage concern; a turn-flow notification DELIVERY
+queue is RT-05's.) Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),
