@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **117** |
-| IN_PROGRESS | 83 | 30 |
+| **VERIFIED** | 38 | **118** |
+| IN_PROGRESS | 83 | 29 |
 | REQUIRED | 57 | 31 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -712,6 +712,25 @@ dead process is reclaimed, so a crashed daemon never locks a user out), E
 socket observers; a prompt starts a turn, an approval resumes THAT turn, a cancel kills the process
 group). "cwd/worktree changes preserve canonical ownership" is the `canonicalRepoRootOf` mechanism
 (MM-05) the daemon keys thread ownership on. Full `pnpm check` passes.
+
+**BG-07 (background-work lifetimes are distinct events) is now VERIFIED.** The row requires the four
+lifetimes to be distinct, restart tests to prove which category stops/is-lost/reconnects/resumes, and
+"no process reported alive without a heartbeat." Each lifetime has its own coverage:
+
+| Lifetime | Restart behavior | Test |
+|---|---|---|
+| definition | survives (durable) | `packages/scheduler/test/integration/scheduler-durable.test.ts` (CR-04 — durable defs survive a restart, session defs do not) |
+| local process | stops / settled in the durable ledger | `packages/background/test/integration/lifecycle.test.ts` (BG-02/BG-04 — completion recorded, idempotent exit) |
+| daemon | reconstructs from the log | `apps/daemon/src/daemon.ts` SS-05 crash recovery + `test/integration/lease.test.ts` (stale-reclaim of a dead holder) |
+| remote peer | lost on silence, reconnect resumes | NEW `apps/remote-worker/test/unit/heartbeat-liveness.test.ts` + `test/integration/resume.test.ts` |
+
+The NEW heartbeat test is the "no process alive without a heartbeat" clause: a peer silent past its
+window is marked `disconnected` (its in-flight work becomes `unknown`, never blindly replayed), a
+heartbeat within the window refreshes liveness, and a reconnect replays ONLY unacknowledged frames —
+resume, not re-do. Classes: I (lifecycle + resume + scheduler-durable + daemon turn), F (heartbeat
+lapse → lost, daemon crash-recovery, `teams` reclaim), E (`apps/daemon/test/integration/turn.test.ts`
+— the real daemon binary drives a turn), D (defaults.md "Remote agent and routine peer"). Full
+`pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

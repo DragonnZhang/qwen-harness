@@ -204,7 +204,7 @@ Sources: [s13](https://learn.shareai.run/en/s13/), [s14](https://learn.shareai.r
 | BG-04 | Completion notification is a new attributed event, never reuse of the original model tool-call ID; duplicate notifications are idempotent. | U,P,I,F | VERIFIED |
 | BG-05 | Output limits, four-way foreground concurrency, priority/FIFO fairness, typed input, 30-second watchdog, five-minute blocked transition, cancellation, and cleanup follow defaults. | U,P,I,F,S | VERIFIED |
 | BG-06 | `/tasks` and TUI panels can list, inspect, tail, foreground/background, stop, and attribute background work without blocking the main input loop. | T,E | REQUIRED |
-| BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | IN_PROGRESS |
+| BG-07 | Definition, local process, daemon, and remote-peer lifetimes are distinct events. Restart tests prove which categories stop, become lost, reconnect, or resume; no process is reported alive without a heartbeat. | I,F,E,D | VERIFIED |
 | CR-01 | Cron parser supports standard five-field wildcard, step, range, list, and DOM/DOW OR semantics with local timezone and precise validation errors. | U,P,I | VERIFIED |
 | CR-02 | Scheduler is independent from runtime, uses a date-aware minute marker, queues due work, and injects it only at safe turn boundaries. | U,P,I,F | VERIFIED |
 | CR-03 | Recurring and one-shot jobs support create/list/delete, owner/thread, creation-time authority ceiling, workload tag, maximum 50 jobs, seven-day recurring expiry, and the deterministic jitter defaults in `docs/product/defaults.md`. | U,P,I,E | VERIFIED |
