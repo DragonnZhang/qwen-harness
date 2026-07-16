@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **109** |
+| **VERIFIED** | 38 | **110** |
 | IN_PROGRESS | 83 | 35 |
-| REQUIRED | 57 | 34 |
+| REQUIRED | 57 | 33 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -581,6 +581,21 @@ purity-consistent), I (the same file spawns the REAL checker over the repo, asse
 asserts its output names every boundary QL-03 claims + that the migrations suite is wired). A
 `scripts/**/*.test.ts` glob was added to the unit vitest project so the gate script is itself tested.
 Full `pnpm check` passes.
+
+**PS-10 (repeated denials never upgrade authority) is now VERIFIED — an invariant, not a new
+feature.** The row asks that repeated denials and prompt fatigue be handled "without silently
+upgrading authority" and that automated classification "reduce prompts only inside hard policy." The
+system upholds this structurally: authority is derived by INTERSECTION (never by honoring a request
+for more), a denial mints no grant, and repeated identical denied calls are stopped by the
+oscillation guard rather than eventually allowed. Evidence: P
+(`packages/policy/src/no-escalation.property.test.ts` — however permissive the request, `intersect`
+never yields authority exceeding the parent ceiling or the managed hard policy), U+S
+(`packages/policy/src/no-upgrade.test.ts` — evaluating a denied action twelve times denies every
+time and never drifts to allow; the managed ceiling denies the network even under `yolo`, and lifting
+only that restriction lets `yolo` through, proving the deny came from hard policy), I
+(`apps/cli/test/integration/denial-no-upgrade.test.ts` — a real run whose model re-requests the
+identical denied write never lands it, records at least one policy decision but none `allow`, mints
+no grant, and terminates safely). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

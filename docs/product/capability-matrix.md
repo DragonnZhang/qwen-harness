@@ -93,7 +93,7 @@ Sources: [s03](https://learn.shareai.run/en/s03/), [s04](https://learn.shareai.r
 | PS-07 | Managed policy is an immutable safety ceiling. Inside it, config provenance follows the exact per-source rules in `docs/product/defaults.md`; deny merges across scopes and doctor explains every winning value. | U,P,I,S,D | VERIFIED |
 | PS-08 | Children and session work inherit no more than their parent; durable/background/Cron work uses the intersection of its captured creation-time ceiling and current managed policy. | U,P,I,S,E | IN_PROGRESS |
 | PS-09 | Permission requests from children bubble to the owning interactive thread with actor, full exact action, risk, scope options, and correlation ID. | U,I,S,T,E | REQUIRED |
-| PS-10 | Repeated denials and prompt fatigue are handled without silently upgrading authority; automated classification may reduce prompts only inside hard policy. | U,P,I,S | REQUIRED |
+| PS-10 | Repeated denials and prompt fatigue are handled without silently upgrading authority; automated classification may reduce prompts only inside hard policy. | U,P,I,S | VERIFIED |
 | PS-11 | Protected paths have explicit classifications and behavior in every profile; repository rules, shell indirection, symlinks, hooks, or child agents cannot downgrade them. | U,P,I,S,T | IN_PROGRESS |
 | SB-01 | Linux isolation has a real backend using bubblewrap/namespaces or an equally strong documented backend; degraded policy-only mode is explicit and fails the release gate. | U,I,S,E | VERIFIED |
 | SB-02 | Sandbox controls canonical filesystem paths, process tree, environment, network, devices, IPC, resource/output limits, and cleanup. | P,I,F,S | VERIFIED |
