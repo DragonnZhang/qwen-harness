@@ -16,9 +16,9 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **105** |
+| **VERIFIED** | 38 | **106** |
 | IN_PROGRESS | 83 | 36 |
-| REQUIRED | 57 | 37 |
+| REQUIRED | 57 | 36 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
 real committed evidence — never relabeling: +10 from generative property tests (fast-check) closing
@@ -527,8 +527,20 @@ server never auto-runs, and a managed deny/exclusive overrides even a user-trust
 (`docs/guide/cli.md` — the precedence ladder and the "a repo can never trust its own server" rule).
 The full `pnpm check` passes.
 
+**TL-06 (read-safe git tooling) is now VERIFIED.** The design intent — git tooling that cannot discard
+work — is realized by ABSENCE: the built-in git surface is exactly `git_status`/`git_diff`, both
+resolving to a read-only `git-read` action, and there is no `git_commit`/`git_reset`/`git_push`/
+`git_clean` tool (a destructive git is only reachable through the policy/approval-gated `run_shell`).
+Evidence: U (`packages/tools-builtin/src/git-tools.test.ts` — the git surface is the two read-only
+tools, both git-read with empty write footprints), I (`packages/tool-worker/test/integration/
+git-tools.test.ts` — real `git_status` through the sandbox reports dirty state), S
+(`packages/tools-builtin/test/security/git-no-mutation.test.ts` — no destructive git tool exists;
+history cannot be rewritten through the tool surface), E (`evals/e2e/git-tools.test.ts` — a real
+`main()` run reads the dirty tree and reports the modified file, read-safely). The full `pnpm check`
+passes.
+
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
-   WebFetch/WebSearch (TL-13), a destructive-git tool (TL-06),
+   WebFetch/WebSearch (TL-13),
    early tool start while streaming (TL-09), turn steering (RT-07), `previous_response_id`
    continuation (PV-08), output-length continuation (ER-01), automatic post-turn memory extraction
    (MM-03), session rename/archive/delete + picker (SS-02, UI-10), **hook-event dispatch at scale (HK-01)

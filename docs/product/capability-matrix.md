@@ -68,7 +68,7 @@ Sources: [s02](https://learn.shareai.run/en/s02/), [s13](https://learn.shareai.r
 | TL-03 | File tools detect binary/encoding/size conditions, paginate large content, preserve line endings, and reject traversal, absolute-path escape, and symlink escape after canonicalization. | U,P,I,S | VERIFIED |
 | TL-04 | Edits and patches detect stale source, return per-file outcomes and diffs, preserve user changes, and never overwrite a concurrently changed file silently. | U,P,I,F,E | VERIFIED |
 | TL-05 | Shell supports cwd, environment allowlisting, stdout/stderr separation, partial streaming, timeout, cancellation, non-zero status, process-group cleanup, and optional PTY. | U,I,F,S,T | IN_PROGRESS |
-| TL-06 | Git tooling is read-safe by default, reports dirty state precisely, and never discards, resets, force-pushes, or rewrites history without exact approval. | U,I,S,E | REQUIRED |
+| TL-06 | Git tooling is read-safe by default, reports dirty state precisely, and never discards, resets, force-pushes, or rewrites history without exact approval. | U,I,S,E | VERIFIED |
 | TL-07 | Tool arguments pass schema validation -> semantic validation -> hard policy -> pre hooks -> permission -> sandbox -> execution. No alternate path bypasses this pipeline. | U,P,I,S | VERIFIED |
 | TL-08 | Multiple calls are partitioned in original order into safe parallel batches and serial side-effect batches based on actual arguments and resource conflicts. | U,P,I,F | VERIFIED |
 | TL-09 | Fully assembled safe calls may start while the model continues streaming, while persistence and ordering prevent early-execution duplication. | U,I,F,L | REQUIRED |
