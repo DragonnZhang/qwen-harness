@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **112** |
-| IN_PROGRESS | 83 | 33 |
+| **VERIFIED** | 38 | **113** |
+| IN_PROGRESS | 83 | 32 |
 | REQUIRED | 57 | 33 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -629,6 +629,24 @@ architecture, secrets:scan, check — and the aggregate `check` chains the core 
 (`pnpm format:check` runs end to end through its actual script and reports a clean tree, so a
 broken/missing entry fails the test, not just a text check), D (docs/quality/acceptance.md references
 `pnpm check`, so the manifest and the documentation cannot silently drift). Full `pnpm check` passes.
+
+**ER-06 (loop/DoS detection) is now VERIFIED — and OSCILLATION detection was BUILT to close a real
+gap.** The row claims the runtime detects repeated-identical calls, oscillation, no-progress, runaway
+child creation, and cost/time DoS. Four were implemented, but `oscillation` was a defined-but-never-
+emitted `TerminationReason`: the budget detected only CONSECUTIVE identical calls, so an `A-B-A-B-A-B`
+flip-flop (each call differs from the one before) slipped past every check. Implemented it in
+`BudgetTracker` (`packages/runtime/src/budget.ts`): a bounded window of recent call signatures fires
+`oscillation` when the recent calls are exactly N repetitions of a fixed ≥2-distinct cycle — and,
+being routed through `observeToolCall`, it wired itself into the engine, which already terminates on
+that verdict. Evidence: U+P (`packages/runtime/src/oscillation.test.ts` — `A-B-A-B` and `A-B-C×3` stop
+with `oscillation`, varied work does not, all-identical is still `repeated-identical-calls`; a
+property that any 2–3 cycle repeated three times is caught), I (`evals/e2e/oscillation.test.ts` — a
+REAL oscillating run terminates with the typed `oscillation` reason in the headless JSON), S
+(`packages/runtime/test/security/dos-bounds.test.ts` — runaway model/tool calls and wall-clock are
+each capped with a named reason). The other detectors are covered by existing tests that verify the
+same behavior: repeated-identical (budget.test.ts + evals/e2e/termination.test.ts), no-progress
+(budget.test.ts), runaway-children (subagent.property.test.ts — the `(limit+1)`th spawn is refused
+with a typed `SubagentError`, the injected-failure path). Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

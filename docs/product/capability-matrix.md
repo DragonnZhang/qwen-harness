@@ -189,7 +189,7 @@ Source: [s11](https://learn.shareai.run/en/s11/) and [Claude Code error referenc
 | ER-03 | Transient network/rate/server errors retry before visible side effects; after visible output or tool execution, recovery avoids blind replay and asks/continues safely. | U,P,I,F,L | VERIFIED |
 | ER-04 | Image/media validation, stream abort, tool abort, hook block, token-budget continuation, overload, and unsupported capabilities have distinct typed paths. | U,I,F | REQUIRED |
 | ER-05 | Retry, continuation, compaction, fallback, and blocking limits are configurable, visible, and produce explicit final reasons. | U,P,I,T | REQUIRED |
-| ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | IN_PROGRESS |
+| ER-06 | The runtime detects repeated identical calls, oscillation, no file/test progress, runaway child creation, and cost/time denial-of-service. | U,P,I,F,S | VERIFIED |
 | ER-07 | Recovery never drops partial evidence, leaks secrets, leaves orphan processes, corrupts terminal mode, or marks an indeterminate side effect complete. | I,F,S,T,E | VERIFIED |
 
 ## J. Background tasks and Cron
