@@ -20,7 +20,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { IO_OWNERS, LAYERS, PACKAGE_DEPS, PURE_PACKAGES } from './graph.ts';
@@ -553,6 +553,86 @@ const results: RuleResult[] = [];
   });
 }
 
+// --- Rule 8: file-size / complexity guardrail ------------------------------------------------
+// A line ceiling is a coarse but MECHANICAL complexity guardrail: past a point a single file can no
+// longer be reviewed or reasoned about as one unit and must be split. Files over the soft guideline
+// are surfaced as warnings (split candidates); a file over the hard ceiling fails the gate outright,
+// so no source file can grow without bound. `*.test.ts` is already excluded from `unit.files`.
+{
+  const SOFT_MAX = 900;
+  const HARD_MAX = 2200;
+  const failures: Finding[] = [];
+  const warnings: Finding[] = [];
+  for (const unit of units) {
+    for (const file of unit.files) {
+      const lines = readFileSync(file, 'utf8').split('\n').length;
+      if (lines > HARD_MAX) {
+        failures.push({
+          file: rel(file),
+          line: 0,
+          message: `${lines} lines exceeds the ${HARD_MAX}-line ceiling; split this file into cohesive modules`,
+        });
+      } else if (lines > SOFT_MAX) {
+        warnings.push({
+          file: rel(file),
+          line: 0,
+          message: `${lines} lines is over the ${SOFT_MAX}-line guideline — consider splitting`,
+        });
+      }
+    }
+  }
+  results.push({
+    id: '8',
+    title: `File-size/complexity guardrail (warn > ${SOFT_MAX}, fail > ${HARD_MAX} lines)`,
+    failures,
+    warnings,
+  });
+}
+
+// --- Rule 9: docs-link integrity -------------------------------------------------------------
+// Every RELATIVE Markdown link in the documentation must resolve to a real file. A broken internal
+// link is a silently-rotten doc, and the acceptance criteria require the documentation to be
+// trustworthy. External (`http(s):`/`mailto:`) and pure-anchor links are out of scope for a
+// filesystem check and are skipped.
+{
+  const failures: Finding[] = [];
+  const mdFiles: string[] = [];
+  const collectMd = (dir: string): void => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === '.git' || entry === 'dist') continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) collectMd(full);
+      else if (entry.endsWith('.md')) mdFiles.push(full);
+    }
+  };
+  collectMd(join(REPO_ROOT, 'docs'));
+  for (const entry of readdirSync(REPO_ROOT)) {
+    if (entry.endsWith('.md')) mdFiles.push(join(REPO_ROOT, entry));
+  }
+  const linkPattern = /\[[^\]]*\]\(([^)]+)\)/g;
+  for (const file of mdFiles) {
+    const source = readFileSync(file, 'utf8');
+    let match: RegExpExecArray | null;
+    while ((match = linkPattern.exec(source)) !== null) {
+      const raw = (match[1] ?? '').split('#')[0].trim();
+      if (raw === '' || /^(https?:|mailto:)/.test(raw)) continue;
+      if (!existsSync(resolve(dirname(file), raw))) {
+        failures.push({
+          file: rel(file),
+          line: lineOf(source, match.index),
+          message: `broken link: ${match[1]} does not resolve to a file`,
+        });
+      }
+    }
+  }
+  results.push({
+    id: '9',
+    title: 'Docs links resolve (no broken relative Markdown links)',
+    failures,
+    warnings: [],
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------------------------
@@ -607,6 +687,6 @@ if (failureCount > 0) {
 }
 
 console.log(
-  `✓ PASS: all 7 boundaries hold across ${scannedFiles} source files. ${warningCount} warning${warningCount === 1 ? '' : 's'} (non-fatal).`,
+  `✓ PASS: all 9 boundaries hold across ${scannedFiles} source files. ${warningCount} warning${warningCount === 1 ? '' : 's'} (non-fatal).`,
 );
 process.exit(0);

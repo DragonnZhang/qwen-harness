@@ -16,8 +16,8 @@ evidence class a row declares, and to mark a row NOT-YET whenever any class lack
 
 | Status | Count (at audit) | Count (current) |
 | --- | --- | --- |
-| **VERIFIED** | 38 | **108** |
-| IN_PROGRESS | 83 | 36 |
+| **VERIFIED** | 38 | **109** |
+| IN_PROGRESS | 83 | 35 |
 | REQUIRED | 57 | 34 |
 
 At the audit, **38 of 178 rows** were verified. Since then the count has been driven to **69** with
@@ -565,6 +565,22 @@ real coordinator run's `write_file` resolves to a failed tool-result and no file
 identical default run writes it; authority is unchanged), E (`evals/e2e/prompt-modes.test.ts` — the
 `--prompt-mode` CLI contract over all modes), D (cli.md prompt-modes section citing the frozen
 defaults.md table). `modeChangesAuthority` stays `false` for every mode. Full `pnpm check` passes.
+
+**QL-03 (mechanical architecture checks) is now VERIFIED — and two checks were BUILT to make its
+claim true.** The row claims dependency direction, cycles, host I/O, exports, schema compatibility,
+file-size/complexity, and docs links are all mechanically checked. `scripts/architecture.ts` already
+enforced direction/cycles/host-I/O/purity/credential-ownership/package-entry (7 rules), and the
+`migrations` vitest project covers schema compatibility — but file-size/complexity and docs-link
+integrity were NOT checked at all (eslint has no complexity rule; `check-spec.sh` only checks file
+EXISTENCE, not links). Added two new gate rules: rule 8 (file-size/complexity guardrail — warn > 900,
+fail > 2200 lines; the repo passes with 3 non-fatal warnings on `main.ts`/`turn-engine.ts`/`team.ts`)
+and rule 9 (docs-link integrity — every relative Markdown link in `docs/` and the root `.md` files
+must resolve; 41 files / 72 links / 0 broken). Evidence: U (`scripts/architecture.test.ts` — the
+`scripts/graph.ts` dependency contract is itself acyclic, layer-direction-respecting, complete, and
+purity-consistent), I (the same file spawns the REAL checker over the repo, asserts exit 0, and
+asserts its output names every boundary QL-03 claims + that the migrations suite is wired). A
+`scripts/**/*.test.ts` glob was added to the unit vitest project so the gate script is itself tested.
+Full `pnpm check` passes.
 
 5. **Genuinely unimplemented behavior.** Some rows describe features that do not exist yet:
    WebFetch/WebSearch (TL-13),

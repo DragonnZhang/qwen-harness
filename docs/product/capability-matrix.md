@@ -297,7 +297,7 @@ These capabilities are required to make every timeline feature usable rather tha
 | SC-03 | Audit records actor, normalized action, policy inputs, decision, grant scope, sandbox, result identity, and redacted errors for every side effect. | U,P,I,S | VERIFIED |
 | QL-01 | Root scripts provide format, lint, typecheck, unit, integration, security, PTY, E2E, live, build, architecture, and aggregate check gates. | I,E,D | IN_PROGRESS |
 | QL-02 | CI runs deterministic gates from a clean clone with locked dependencies, no network where avoidable, test sharding, artifacts, and failure diagnostics. | I,F,D | REQUIRED |
-| QL-03 | Dependency direction, cycles, forbidden host I/O, package exports, schema compatibility, file-size/complexity guardrails, and docs links are mechanically checked. | U,I | IN_PROGRESS |
+| QL-03 | Dependency direction, cycles, forbidden host I/O, package exports, schema compatibility, file-size/complexity guardrails, and docs links are mechanically checked. | U,I | VERIFIED |
 | QL-04 | Tests include unit, property, contract, integration, failure injection, security, PTY, performance, deterministic evals, and credentialed live E2E without flaky pass-through. | P,I,F,S,T,E,L | REQUIRED |
 | PK-01 | Clean Linux host bootstrap installs pinned Node active LTS/pnpm and required sandbox/terminal dependencies or reports exact unavailable prerequisites. | I,F,D | VERIFIED |
 | PK-02 | Build produces a versioned CLI package with lockfile, integrity, install/uninstall, config migration, upgrade/rollback, and shell completion. | I,F,E,D | VERIFIED |
